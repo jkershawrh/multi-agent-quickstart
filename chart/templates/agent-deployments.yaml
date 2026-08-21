@@ -20,9 +20,16 @@ spec:
         app.kubernetes.io/component: agent
         agent-type: {{ $name }}
     spec:
+      securityContext:
+        runAsNonRoot: true
       containers:
         - name: {{ $name }}-agent
           image: {{ $agent.image }}
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
           ports:
             - containerPort: {{ $agent.port }}
           command: ["uvicorn", "agent:app", "--host", "0.0.0.0", "--port", "{{ $agent.port }}"]

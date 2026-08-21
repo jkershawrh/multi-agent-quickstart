@@ -104,18 +104,29 @@ flowchart LR
 
 ## Requirements
 
+This quickstart runs locally on CPU or on Red Hat OpenShift. Choose the path that fits your goal.
+
+|  | Local (laptop / dev server) | OpenShift (production-like) |
+|---|---|---|
+| **Purpose** | Learn, develop, demo | Deploy, integrate, scale |
+| **Hardware** | 4 CPU cores, 8 GiB memory | 6+ CPU cores, 12 GiB memory |
+| **Software** | Python 3.9+, Ollama | OpenShift 4.14+, Helm 3.12+ |
+| **Models** | Ollama serves both locally | Ollama in-cluster or external MaaS |
+| **Semantic routing** | Optional (needs llm-d-sc binary) | Included (containerized llm-d-sc) |
+| **Sandboxing** | Process-level isolation | Pod SecurityContext, restricted profiles |
+| **Auth** | Shared bearer token (optional) | K8s Secrets, service account tokens |
+| **Tracing** | Log-based latency tracking | OpenTelemetry to Jaeger/Tempo (roadmap) |
+| **Time to first workflow** | ~2 minutes | ~10 minutes |
+
 ### Minimum hardware requirements
 
-- 6 CPU cores (Intel Xeon recommended -- 1 per agent + 1 orchestrator + 1 MCP server + 1 llm-d-sc)
-- 12 GiB memory (6 GiB for Ollama with 2 models + 4 GiB for services + 2 GiB for llm-d-sc)
-- 8 GiB storage (2 model weights + llm-d-sc classifier artifact + container images)
+- **Local:** 4 CPU cores (Intel Xeon recommended), 8 GiB memory, 3 GiB storage
+- **OpenShift:** 6 CPU cores, 12 GiB memory, 8 GiB storage (includes llm-d-sc + model artifacts)
 
 ### Minimum software requirements
 
-- Red Hat OpenShift 4.14+ or OpenShift AI 2.7+
-- Helm 3.12+
-- `oc` CLI 4.14+
-- Podman 4.0+ or Docker Compose (for local development)
+- **Local:** Python 3.9+, Ollama (optional -- demo mode works without it), Podman 4.0+ (optional for container mode)
+- **OpenShift:** Red Hat OpenShift 4.14+ or OpenShift AI 2.7+, Helm 3.12+, `oc` CLI 4.14+
 
 ### Required user permissions
 
@@ -125,61 +136,103 @@ This quickstart can be deployed by a regular user with namespace-level permissio
 
 ### Prerequisites
 
-- Access to a Red Hat OpenShift cluster or local Podman installation
-- `helm` and `oc` CLI tools installed
-- No external model endpoint required (Ollama is included in the Compose stack; demo mode works without any LLM backend)
+- Access to a Red Hat OpenShift cluster (Option 2) or a local machine with Python 3.9+ (Option 1)
+- Ollama installed locally for LLM inference (optional -- demo mode works without it)
+- `helm` and `oc` CLI tools installed (OpenShift only)
 
-### Installation
+### Option 1: Run locally
 
-1. Clone the repository:
+Best for learning, development, and demos. Runs all services as local Python processes on CPU.
 
 ```bash
 git clone https://github.com/rh-ai-quickstart/multi-agent-quickstart.git
 cd multi-agent-quickstart
+
+# One command -- detects Ollama, pulls models, starts everything
+./demo.sh
 ```
 
-2. Copy and configure environment variables:
+What starts:
+- 3 A2A agents (research, analyst, executor) on ports 8001-8003
+- MCP tool server on port 8004
+- Orchestrator on port 8000
+- Gradio UI on port 7860 (requires Python 3.10+)
+- Ollama serving qwen2.5:0.5b + qwen2.5:1.5b (if available; falls back to demo mode)
+
+Verify:
+
+```bash
+curl http://localhost:8000/health
+curl -X POST http://localhost:8000/api/v1/workflow \
+  -H "Content-Type: application/json" \
+  -d '{"query": "Investigate the API error spike and create a fix task"}'
+```
+
+**Local with containers** (closer to production):
 
 ```bash
 cp .env.example .env
-# Edit .env to set DEMO_MODE=true if you want demo responses without Ollama
-```
-
-3. **Option A: Quick start with demo.sh** (recommended for first run)
-
-```bash
-./demo.sh
-# Automatically detects Ollama, pulls both models, starts all services
-# Open http://localhost:7860 for the Gradio UI (requires Python 3.10+)
-```
-
-4. **Option B: Local development with Podman Compose**
-
-```bash
 podman compose up -d
-# Ollama will pull qwen2.5:0.5b and qwen2.5:1.5b on first start
-# Verify all services are healthy
-curl http://localhost:8000/health   # Orchestrator
-curl http://localhost:8001/health   # Research agent
-curl http://localhost:8002/health   # Analyst agent
-curl http://localhost:8003/health   # Executor agent
-curl http://localhost:8004/health   # MCP tool server
+# Pulls both Ollama models + llm-d-sc classifier on first start
 ```
 
-5. **Option C: Deploy to OpenShift with Helm**
+Stop:
 
 ```bash
+# demo.sh: Ctrl+C
+# compose: podman compose down -v
+```
+
+### Option 2: Deploy to Red Hat OpenShift
+
+Best for production-like deployment, integration with OpenShift AI platform services, and team demos.
+
+```bash
+git clone https://github.com/rh-ai-quickstart/multi-agent-quickstart.git
+cd multi-agent-quickstart
+
+# Create project
 oc new-project multi-agent-quickstart
+
+# Deploy with Helm
 helm install multi-agent-quickstart chart/
 ```
 
-6. **Enable agent authentication** (optional):
+What you get on OpenShift that you don't get locally:
+
+- **Sandboxed agents** -- each agent pod runs with `readOnlyRootFilesystem`, dropped capabilities, and non-root user via SecurityContext
+- **Semantic routing** -- llm-d-sc runs as a containerized service with its own Deployment and ClusterIP Service; the orchestrator routes queries through it automatically
+- **Secret-based auth** -- set `auth.enabled: true` in values.yaml to inject bearer tokens via K8s Secrets instead of environment variables
+- **Health probes** -- liveness and readiness probes on every service for automatic restart and traffic management
+- **Resource isolation** -- CPU and memory requests/limits per agent (1 core per agent, configurable in values.yaml)
+
+Customize the deployment:
 
 ```bash
-export AGENT_AUTH_TOKEN=my-secret-token
+# Enable agent authentication
+helm upgrade multi-agent-quickstart chart/ --set auth.enabled=true
+
+# Disable semantic routing (if not using llm-d-sc)
+helm upgrade multi-agent-quickstart chart/ --set semanticRouter.enabled=false
+
+# Use your own model endpoint (MaaS)
+helm upgrade multi-agent-quickstart chart/ \
+  --set model.endpoint=https://my-maas:443 \
+  --set model.name=my-model
 ```
 
-### Validating the deployment
+Verify:
+
+```bash
+oc get pods
+ROUTE_URL="https://$(oc get route multi-agent-quickstart -o jsonpath='{.spec.host}')"
+curl "$ROUTE_URL/health"
+curl -X POST "$ROUTE_URL/api/v1/workflow" \
+  -H "Content-Type: application/json" \
+  -d '{"query": "Investigate the API error spike, analyze root cause, and fix it"}'
+```
+
+### Validating either deployment
 
 ```bash
 # Check system health and semantic routing status
@@ -205,6 +258,10 @@ curl http://localhost:8004/health
 ### Delete
 
 ```bash
+# Local compose
+podman compose down -v
+
+# OpenShift
 helm uninstall multi-agent-quickstart
 oc delete project multi-agent-quickstart
 ```
