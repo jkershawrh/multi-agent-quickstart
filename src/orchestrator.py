@@ -32,8 +32,34 @@ try:
 except ImportError:
     GRPC_AVAILABLE = False
 
+try:
+    from opentelemetry import trace
+    from opentelemetry.sdk.trace import TracerProvider
+    from opentelemetry.sdk.trace.export import (
+        SimpleSpanProcessor,
+        ConsoleSpanExporter,
+    )
+    _otel_endpoint = os.environ.get("OTEL_EXPORTER_OTLP_ENDPOINT", "")
+    _provider = TracerProvider()
+    if _otel_endpoint:
+        from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import (
+            OTLPSpanExporter,
+        )
+        _provider.add_span_processor(SimpleSpanProcessor(OTLPSpanExporter(endpoint=_otel_endpoint)))
+    else:
+        _provider.add_span_processor(SimpleSpanProcessor(ConsoleSpanExporter()))
+    trace.set_tracer_provider(_provider)
+    OTEL_AVAILABLE = True
+except ImportError:
+    OTEL_AVAILABLE = False
+
 logging.basicConfig(level=os.environ.get("LOG_LEVEL", "INFO"))
 logger = logging.getLogger("orchestrator")
+
+if OTEL_AVAILABLE:
+    tracer = trace.get_tracer("orchestrator")
+else:
+    tracer = None
 
 AI_DISCLAIMER = (
     "Agent responses are AI-generated -- verify "
@@ -324,74 +350,109 @@ async def execute_workflow(
     workflow_type: str = "auto",
 ) -> models.WorkflowResponse:
     """Execute a multi-agent workflow by delegating tasks sequentially."""
-    classification = None
+    return await _execute_workflow_inner(a2a_client, query, workflow_type)
 
+
+async def _execute_workflow_inner(
+    a2a_client: A2AClient,
+    query: str,
+    workflow_type: str,
+) -> models.WorkflowResponse:
+    classification = None
     model_override = ""
 
-    if workflow_type == "auto" and semantic_router.active:
-        classification = await semantic_router.classify(query)
-        if classification:
-            workflow_type = classification.selected_workflow
-            model_tier = classification.selected_model
-            if model_tier == "simple":
-                model_override = MODEL_SIMPLE
+    _wf_span = tracer.start_span("workflow", attributes={"workflow.type_requested": workflow_type}) if tracer else None
+    try:
+        if workflow_type == "auto" and semantic_router.active:
+            _cls_span = tracer.start_span("classify", attributes={"classify.mode": semantic_router.mode}) if tracer else None
+            try:
+                classification = await semantic_router.classify(query)
+            finally:
+                if _cls_span:
+                    if classification:
+                        _cls_span.set_attribute("classify.result", classification.selected_workflow)
+                        _cls_span.set_attribute("classify.top_label", classification.signals[0].label if classification.signals else "")
+                        _cls_span.set_attribute("classify.latency_ms", classification.latency_ms)
+                    _cls_span.end()
+
+            if classification:
+                workflow_type = classification.selected_workflow
+                model_tier = classification.selected_model
+                if model_tier == "simple":
+                    model_override = MODEL_SIMPLE
+                else:
+                    model_override = MODEL_COMPLEX
+                logger.info(
+                    "Semantic routing: %s -> %s, model=%s (top signal: %s %.3f)",
+                    workflow_type,
+                    classification.selected_workflow,
+                    model_override,
+                    classification.signals[0].label if classification.signals else "?",
+                    classification.signals[0].score if classification.signals else 0,
+                )
             else:
-                model_override = MODEL_COMPLEX
-            logger.info(
-                "Semantic routing: %s -> %s, model=%s (top signal: %s %.3f)",
-                workflow_type,
-                classification.selected_workflow,
-                model_override,
-                classification.signals[0].label if classification.signals else "?",
-                classification.signals[0].score if classification.signals else 0,
-            )
-        else:
+                workflow_type = "comprehensive"
+        elif workflow_type == "auto":
             workflow_type = "comprehensive"
-    elif workflow_type == "auto":
-        workflow_type = "comprehensive"
 
-    steps_config = WORKFLOW_DEFINITIONS.get(
-        workflow_type,
-        WORKFLOW_DEFINITIONS["comprehensive"],
-    )
+        if _wf_span:
+            _wf_span.set_attribute("workflow.type_resolved", workflow_type)
+            _wf_span.set_attribute("workflow.model_override", model_override or "default")
 
-    steps: List[models.WorkflowStep] = []
-    agents_involved: List[str] = []
-    total_start = time.monotonic()
+        steps_config = WORKFLOW_DEFINITIONS.get(
+            workflow_type,
+            WORKFLOW_DEFINITIONS["comprehensive"],
+        )
 
-    # Build context that accumulates across steps
-    context = query
-    for agent_name, action in steps_config:
-        step_start = time.monotonic()
+        steps: List[models.WorkflowStep] = []
+        agents_involved: List[str] = []
+        total_start = time.monotonic()
 
-        task_text = f"[{action}] {context}"
-        result = await a2a_client.send_task(agent_name, task_text, model_override)
+        context = query
+        for agent_name, action in steps_config:
+            step_start = time.monotonic()
 
-        step_latency = round((time.monotonic() - step_start) * 1000, 2)
+            _agent_span = tracer.start_span("agent_call", attributes={
+                "agent.name": agent_name,
+                "agent.action": action,
+            }) if tracer else None
 
-        # Extract result text from A2A response
-        result_text = _extract_result_text(result)
+            try:
+                task_text = f"[{action}] {context}"
+                result = await a2a_client.send_task(agent_name, task_text, model_override)
+            finally:
+                step_latency = round((time.monotonic() - step_start) * 1000, 2)
+                if _agent_span:
+                    _agent_span.set_attribute("agent.latency_ms", step_latency)
+                    _agent_span.end()
 
-        steps.append(models.WorkflowStep(
-            agent=agent_name,
-            action=action,
-            result=result_text,
-            latency_ms=step_latency,
-        ))
-        agents_involved.append(agent_name)
+            result_text = _extract_result_text(result)
 
-        # Accumulate context for next step
-        context = f"{context}\n\nPrevious step ({agent_name}/{action}): {result_text}"
+            steps.append(models.WorkflowStep(
+                agent=agent_name,
+                action=action,
+                result=result_text,
+                latency_ms=step_latency,
+            ))
+            agents_involved.append(agent_name)
+            context = f"{context}\n\nPrevious step ({agent_name}/{action}): {result_text}"
 
-    total_latency = round((time.monotonic() - total_start) * 1000, 2)
+        total_latency = round((time.monotonic() - total_start) * 1000, 2)
 
-    return models.WorkflowResponse(
-        steps=steps,
-        total_latency_ms=total_latency,
-        agents_involved=list(dict.fromkeys(agents_involved)),
-        classification=classification,
-        ai_disclaimer=AI_DISCLAIMER,
-    )
+        if _wf_span:
+            _wf_span.set_attribute("workflow.total_latency_ms", total_latency)
+            _wf_span.set_attribute("workflow.steps_count", len(steps))
+
+        return models.WorkflowResponse(
+            steps=steps,
+            total_latency_ms=total_latency,
+            agents_involved=list(dict.fromkeys(agents_involved)),
+            classification=classification,
+            ai_disclaimer=AI_DISCLAIMER,
+        )
+    finally:
+        if _wf_span:
+            _wf_span.end()
 
 
 def _extract_result_text(rpc_response: dict) -> str:
@@ -476,6 +537,7 @@ async def health():
         "agents_discovered": len(agents),
         "agent_names": [a.name for a in agents],
         "semantic_routing": semantic_router.mode,
+        "tracing": "active" if OTEL_AVAILABLE else "inactive",
     }
 
 

@@ -19,6 +19,7 @@ Deploy cooperating AI agents with semantic routing, MCP tool calling, and inter-
   - [Validating the deployment](#validating-the-deployment)
   - [Delete](#delete)
 - [Customizing for your domain](#customizing-for-your-domain)
+- [Blueprint alignment](#blueprint-alignment)
 - [Repository structure](#repository-structure)
 - [References](#references)
 - [Tags](#tags)
@@ -314,6 +315,49 @@ AGENT_CONFIGS = {
 
 The orchestrator, semantic routing, auth, and UI work unchanged -- they only care about agent names and the A2A protocol, not what the agents do internally.
 
+## Blueprint alignment
+
+This quickstart implements the [Red Hat AI Agent Blueprint](https://developers.redhat.com/articles/2025/07/20/architect-open-blueprint-cloud-native-ai-agents). The table below maps each blueprint component to what this quickstart provides and the Red Hat initiative that fills the role at production scale.
+
+| Blueprint Component | This Quickstart | Red Hat Initiative | Status |
+|---|---|---|---|
+| **Agent orchestration (A2A)** | A2A agent cards + JSON-RPC | Kagenti (rossoctl) | Implemented |
+| **Sandbox runtime** | SecurityContext (runAsNonRoot, drop ALL) | OpenShell | Pod-level (process-level planned) |
+| **Harness** | Custom FastAPI loop | OpenClaw / LangGraph / custom | Implemented |
+| **Semantic routing (Tier 2)** | llm-d-sc + LLM fallback | vLLM Semantic Router / llm-d-sc | Implemented |
+| **Inference routing (Tier 3)** | Single Ollama instance | llm-d Router / EPP | Not applicable locally |
+| **MCP tool calling** | MCP JSON-RPC tools | MCP (Agentic AI Foundation) | Implemented |
+| **Tool governance** | Bearer token auth on /a2a | MCP Gateway (Envoy + Kuadrant) | Partial |
+| **Workload identity** | Shared bearer token | SPIFFE/SPIRE via Kagenti | Local only |
+| **Inference guardrails** | AI disclaimer | TrustyAI Guardrails Orchestrator | Stub |
+| **Tracing** | OpenTelemetry spans | MLflow Tracing + OTel | Implemented |
+| **Agent lifecycle** | Helm chart + Kagenti Agent CRDs | Kagenti Agent CRD | Both provided |
+| **Model serving** | Ollama (CPU) | vLLM / Red Hat AI Inference Server | Local dev |
+
+### Deploying with Kagenti (rossoctl)
+
+This quickstart ships Kagenti Agent CRD manifests under `deploy/kagenti/`. On a cluster with the Kagenti operator installed, agents are deployed as first-class Kubernetes resources:
+
+```bash
+# Apply the Agent CRDs (requires Kagenti operator)
+oc apply -f deploy/kagenti/mcp-server.yaml
+oc apply -f deploy/kagenti/research-agent.yaml
+oc apply -f deploy/kagenti/analyst-agent.yaml
+oc apply -f deploy/kagenti/executor-agent.yaml
+```
+
+Kagenti provides what the Helm chart cannot: SPIFFE-based workload identity (automatic credential rotation), AgentCard CRD discovery (agents register with the cluster control plane), and a UI for monitoring agent health and lifecycle. The Helm chart remains the simpler path for teams not yet running Kagenti.
+
+### Production path
+
+To move from this quickstart to production on the blueprint:
+
+1. **Replace Ollama with vLLM** behind the Red Hat AI Inference Server for GPU-accelerated serving with KV-cache-aware inference routing via llm-d.
+2. **Deploy Kagenti** for SPIFFE identity injection and AgentCard-based discovery instead of static `AGENT_URLS`.
+3. **Add an MCP Gateway** (Envoy + Kuadrant/Authorino) in front of the MCP tool server for claims-based tool authorization.
+4. **Enable TrustyAI Guardrails** for input/output screening at the inference boundary.
+5. **Add OpenShell** for process-level sandboxing (seccomp, Landlock) inside each agent pod.
+
 ## Repository structure
 
 ```
@@ -322,6 +366,12 @@ The orchestrator, semantic routing, auth, and UI work unchanged -- they only car
 ├── .github/
 │   └── workflows/
 │       └── ci.yaml           # GitHub Actions CI pipeline
+├── deploy/
+│   └── kagenti/              # Kagenti Agent CRD manifests
+│       ├── research-agent.yaml
+│       ├── analyst-agent.yaml
+│       ├── executor-agent.yaml
+│       └── mcp-server.yaml
 ├── chart/                    # Helm chart for OpenShift deployment
 │   ├── Chart.yaml
 │   ├── values.yaml
@@ -361,6 +411,10 @@ The orchestrator, semantic routing, auth, and UI work unchanged -- they only car
 - [A2A Protocol Specification](https://google.github.io/A2A/) -- Open protocol for agent-to-agent discovery, delegation, and task management.
 - [llm-d-sc Semantic Classifier](https://github.com/llm-d-incubation/llm-d-semantic-classifier) -- Low-latency Rust service for semantic classification of inference requests, part of the llm-d project.
 - [Model Context Protocol (MCP)](https://modelcontextprotocol.io/) -- Open protocol for connecting AI models to external tools and data sources.
+- [Kagenti](https://github.com/kagenti/kagenti) -- Cloud-native middleware for deploying and orchestrating AI agents with SPIFFE identity and A2A discovery.
+- [OpenShell](https://github.com/NVIDIA/OpenShell) -- Sandbox runtime for AI agents providing process-level isolation via seccomp, Landlock, and network policy.
+- [TrustyAI](https://github.com/trustyai-explainability) -- AI fairness, explainability, and guardrails for Red Hat OpenShift AI.
+- [Red Hat AI Agent Blueprint](https://developers.redhat.com/articles/2025/07/20/architect-open-blueprint-cloud-native-ai-agents) -- Open architecture for cloud-native AI agents on Red Hat AI.
 - [Intel Xeon for Multi-Service Workloads](https://www.intel.com/content/www/us/en/products/details/processors/xeon.html) -- Core-per-agent isolation and predictable performance for AI services.
 - [Red Hat OpenShift AI Documentation](https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/) -- Enterprise AI platform for deploying and managing AI workloads.
 - [FastAPI Documentation](https://fastapi.tiangolo.com/) -- High-performance Python web framework for building APIs.

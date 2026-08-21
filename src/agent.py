@@ -33,6 +33,7 @@ MODEL_ENDPOINT = os.environ.get("MODEL_ENDPOINT", "")
 MODEL_NAME = os.environ.get("MODEL_NAME", "qwen2.5:1.5b")
 DEMO_MODE = os.environ.get("DEMO_MODE", "").lower() in ("true", "1", "yes")
 MCP_SERVER_URL = os.environ.get("MCP_SERVER_URL", "")
+GUARDRAILS_URL = os.environ.get("GUARDRAILS_URL", "")
 
 AI_DISCLAIMER = (
     "Agent responses are AI-generated -- verify "
@@ -240,6 +241,28 @@ async def _llm_response(text: str, model_name: str = "") -> str:
 
 
 # ---------------------------------------------------------------------------
+# Guardrails screening
+# ---------------------------------------------------------------------------
+
+
+async def _screen_text(text: str, direction: str) -> dict:
+    """Screen text through the guardrails service. Returns screening result or None."""
+    if not GUARDRAILS_URL:
+        return {"allowed": True, "flags": [], "screened_text": text}
+    try:
+        async with httpx.AsyncClient(timeout=5.0) as client:
+            resp = await client.post(
+                f"{GUARDRAILS_URL}/screen",
+                json={"text": text, "direction": direction},
+            )
+            if resp.status_code == 200:
+                return resp.json()
+    except Exception as e:
+        logger.warning("Guardrails screening failed (%s), allowing through", e)
+    return {"allowed": True, "flags": [], "screened_text": text}
+
+
+# ---------------------------------------------------------------------------
 # MCP tool calling
 # ---------------------------------------------------------------------------
 
@@ -357,16 +380,30 @@ async def a2a_endpoint(request: models.JsonRpcRequest):
 
         start = time.monotonic()
 
-        tool_context = await _call_mcp_tools(text)
-        enriched_text = f"{text}\n\nTool results:\n{tool_context}" if tool_context else text
-
-        if MODEL_ENDPOINT and not DEMO_MODE:
-            response_text = await _llm_response(enriched_text, model_override)
+        input_screen = await _screen_text(text, "input")
+        if not input_screen["allowed"]:
+            flags_summary = ", ".join(f["type"] for f in input_screen.get("flags", []))
+            logger.warning("Guardrails blocked input [%s]: %s", AGENT_NAME, flags_summary)
+            response_text = (
+                f"Request blocked by guardrails ({flags_summary}). "
+                "Please rephrase your query."
+            )
         else:
-            response_text = _demo_response(text)
+            tool_context = await _call_mcp_tools(text)
+            enriched_text = f"{text}\n\nTool results:\n{tool_context}" if tool_context else text
 
-        if tool_context:
-            response_text = f"{response_text}\n\n[MCP tool data retrieved]\n{tool_context}"
+            if MODEL_ENDPOINT and not DEMO_MODE:
+                response_text = await _llm_response(enriched_text, model_override)
+            else:
+                response_text = _demo_response(text)
+
+            if tool_context:
+                response_text = f"{response_text}\n\n[MCP tool data retrieved]\n{tool_context}"
+
+            output_screen = await _screen_text(response_text, "output")
+            if output_screen.get("flags"):
+                flags_summary = ", ".join(f["type"] for f in output_screen["flags"])
+                response_text += f"\n\n[Guardrails warning: {flags_summary} detected in output]"
 
         latency_ms = round((time.monotonic() - start) * 1000, 2)
 

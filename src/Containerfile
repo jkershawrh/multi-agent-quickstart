@@ -11,10 +11,11 @@ COPY orchestrator.py .
 COPY ui.py .
 COPY auth.py .
 COPY mcp_server.py .
+COPY guardrails.py .
 COPY classify_pb2.py .
 COPY classify_pb2_grpc.py .
 
-EXPOSE 8000 8001 8002 8003
+EXPOSE 8000 8001 8002 8003 8004 8005
 
 # Default: run orchestrator. Override CMD for agents.
 CMD ["uvicorn", "orchestrator:app", "--host", "0.0.0.0", "--port", "8000"]

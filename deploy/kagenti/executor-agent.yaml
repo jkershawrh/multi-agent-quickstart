@@ -1,0 +1,63 @@
+apiVersion: agent.kagenti.dev/v1alpha1
+kind: Agent
+metadata:
+  name: executor-agent
+  namespace: multi-agent-quickstart
+  labels:
+    app.kubernetes.io/name: executor-agent
+    kagenti.io/type: agent
+    kagenti.io/agent-protocol: a2a
+  annotations:
+    description: Executor agent that takes action on recommendations and reports results
+spec:
+  description: Execute recommended actions, create tasks, and generate status reports
+  imageSource:
+    image: quay.io/rh-ai-quickstart/multi-agent-quickstart:latest
+  replicas: 1
+  servicePorts:
+    - name: http
+      port: 8003
+      protocol: TCP
+      targetPort: 8003
+  podTemplateSpec:
+    spec:
+      serviceAccountName: executor-agent
+      volumes:
+        - name: tmp
+          emptyDir: {}
+      containers:
+        - name: agent
+          image: <will be replaced with imageSource.image above>
+          imagePullPolicy: Always
+          ports:
+            - name: http
+              containerPort: 8003
+              protocol: TCP
+          env:
+            - name: AGENT_NAME
+              value: "executor"
+            - name: AGENT_SKILLS
+              value: "execute,report"
+            - name: AGENT_PORT
+              value: "8003"
+            - name: LOG_LEVEL
+              value: "INFO"
+            - name: MCP_SERVER_URL
+              value: "http://mcp-server.multi-agent-quickstart.svc.cluster.local:8004"
+            - name: XDG_CACHE_HOME
+              value: "/tmp/.cache"
+          securityContext:
+            readOnlyRootFilesystem: true
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+          resources:
+            limits:
+              cpu: "1000m"
+              memory: "512Mi"
+            requests:
+              cpu: "250m"
+              memory: "256Mi"

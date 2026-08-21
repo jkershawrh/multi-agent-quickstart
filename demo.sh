@@ -92,6 +92,21 @@ for _ in $(seq 1 30); do
 done
 echo " ready."
 
+# ── Start guardrails service ───────────────────────────────────────
+GUARDRAILS_PORT=8005 python3 -m uvicorn guardrails:app --host 127.0.0.1 --port 8005 &
+PIDS+=($!)
+export GUARDRAILS_URL="http://127.0.0.1:8005"
+
+echo -n "Waiting for guardrails..."
+for _ in $(seq 1 30); do
+    if curl -sf "http://127.0.0.1:8005/health" >/dev/null 2>&1; then
+        break
+    fi
+    sleep 1
+    echo -n "."
+done
+echo " ready."
+
 # ── Start 3 A2A agents ──────────────────────────────────────────────
 AGENT_NAME=research AGENT_SKILLS=investigate,summarize AGENT_PORT=8001 \
     python3 -m uvicorn agent:app --host 127.0.0.1 --port 8001 &
@@ -182,6 +197,7 @@ echo "════════════════════════�
 echo "  Multi-Agent Quickstart — running"
 echo ""
 echo "  MCP Tool Server:  http://127.0.0.1:8004"
+echo "  Guardrails:       http://127.0.0.1:8005"
 echo "  Research Agent:   http://127.0.0.1:8001"
 echo "  Analyst Agent:    http://127.0.0.1:8002"
 echo "  Executor Agent:   http://127.0.0.1:8003"
@@ -210,6 +226,7 @@ else
     echo "  Auth:    DISABLED"
 fi
 echo "  MCP:     ENABLED (3 tools)"
+echo "  Guards:  ENABLED (input/output screening)"
 echo "════════════════════════════════════════════════════════════"
 echo "Press Ctrl+C to stop."
 echo ""

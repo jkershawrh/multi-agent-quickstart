@@ -67,6 +67,22 @@ services:
       timeout: 5s
       retries: 5
 
+  guardrails:
+    build:
+      context: ./src
+      dockerfile: Containerfile
+    ports:
+      - "8005:8005"
+    environment:
+      - GUARDRAILS_PORT=8005
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
+    command: ["uvicorn", "guardrails:app", "--host", "0.0.0.0", "--port", "8005"]
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://localhost:8005/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
   research-agent:
     build:
       context: ./src
@@ -81,6 +97,7 @@ services:
       - MODEL_ENDPOINT=http://ollama:11434/v1
       - MODEL_NAME=qwen2.5:1.5b
       - MCP_SERVER_URL=http://mcp-server:8004
+      - GUARDRAILS_URL=http://guardrails:8005
       - AGENT_AUTH_TOKEN=${AGENT_AUTH_TOKEN:-}
     command: ["uvicorn", "agent:app", "--host", "0.0.0.0", "--port", "8001"]
     healthcheck:
@@ -106,6 +123,7 @@ services:
       - MODEL_ENDPOINT=http://ollama:11434/v1
       - MODEL_NAME=qwen2.5:1.5b
       - MCP_SERVER_URL=http://mcp-server:8004
+      - GUARDRAILS_URL=http://guardrails:8005
       - AGENT_AUTH_TOKEN=${AGENT_AUTH_TOKEN:-}
     command: ["uvicorn", "agent:app", "--host", "0.0.0.0", "--port", "8002"]
     healthcheck:
@@ -131,6 +149,7 @@ services:
       - MODEL_ENDPOINT=http://ollama:11434/v1
       - MODEL_NAME=qwen2.5:1.5b
       - MCP_SERVER_URL=http://mcp-server:8004
+      - GUARDRAILS_URL=http://guardrails:8005
       - AGENT_AUTH_TOKEN=${AGENT_AUTH_TOKEN:-}
     command: ["uvicorn", "agent:app", "--host", "0.0.0.0", "--port", "8003"]
     healthcheck:
