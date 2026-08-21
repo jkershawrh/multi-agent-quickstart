@@ -22,7 +22,7 @@ claims:
     value: "3-agent cooperative workflow"
     file: src/orchestrator.py
     line: 207
-    source: "Demonstrated by triage -> clinical -> scheduling pipeline executing in sequence via A2A"
+    source: "Demonstrated by research -> analyst -> executor pipeline executing in sequence via A2A"
     source_url: ""
     verified: true
     verified_date: "2025-01-15"
@@ -36,7 +36,7 @@ claims:
     source_url: "https://github.com/llm-d-incubation/llm-d-semantic-classifier"
     verified: true
     verified_date: "2026-08-21"
-    notes: "Routing logic verified by unit tests: test_auto_workflow_selects_by_complexity, test_expanded_workflow_definitions, test_semantic_router_fallback_comprehensive"
+    notes: "Routing logic verified by unit tests: test_auto_workflow_selects_by_complexity, test_expanded_workflow_definitions, test_semantic_router_inactive_returns_none"
 
   - id: semantic-routing-fallback
     value: "Falls back to comprehensive workflow when llm-d-sc unavailable"
@@ -46,10 +46,10 @@ claims:
     source_url: ""
     verified: true
     verified_date: "2026-08-21"
-    notes: "Verified by test_semantic_router_fallback_comprehensive"
+    notes: "Verified by test_semantic_router_inactive_returns_none and test_semantic_router_llm_fallback_activates"
 
   - id: mcp-tool-calling
-    value: "3 MCP tools for healthcare data (patient records, drug interactions, scheduling)"
+    value: "3 MCP tools for data access (record lookup, knowledge search, task creation)"
     file: src/mcp_server.py
     line: 1
     source: "MCP JSON-RPC server with tools/list and tools/call endpoints; agents call tools during task processing"

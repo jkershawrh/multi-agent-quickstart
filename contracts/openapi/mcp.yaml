@@ -2,9 +2,9 @@ openapi: "3.1.0"
 info:
   title: MCP Tool Server API
   description: >
-    Healthcare tool server implementing the Model Context Protocol (MCP)
-    over HTTP. Exposes tools for patient record lookup, drug interaction
-    checking, and appointment scheduling. Runs on Intel Xeon CPU.
+    Domain-agnostic tool server implementing the Model Context Protocol (MCP)
+    over HTTP. Exposes tools for record lookup, knowledge base search, and
+    task creation. Runs on Intel Xeon CPU.
   version: "1.0.0"
   contact:
     name: Red Hat AI Quickstarts
@@ -65,7 +65,7 @@ components:
           type: array
           items:
             type: string
-          example: ["lookup_patient_record", "check_drug_interactions", "find_available_slots"]
+          example: ["lookup_record", "search_knowledge_base", "create_task"]
 
     McpRequest:
       type: object

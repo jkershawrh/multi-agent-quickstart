@@ -150,7 +150,7 @@ KNOWLEDGE_BASE = [
     {
         "id": "KB-004",
         "title": "Incident response runbook template",
-        "summary": "Template for creating incident response runbooks. Covers detection, triage, communication, remediation, and post-mortem steps.",
+        "summary": "Template for creating incident response runbooks. Covers detection, classification, communication, remediation, and post-mortem steps.",
         "tags": ["incident", "runbook", "sre", "operations", "security"],
     },
     {

@@ -25,8 +25,8 @@ benchmark_rubric:
 
   benchmarks:
     workflow_latency:
-      description: "3-agent comprehensive workflow (triage -> clinical -> scheduling) end-to-end latency"
-      test_query: "Patient presents with acute chest pain, elevated troponin, and shortness of breath"
+      description: "3-agent comprehensive workflow (research -> analyst -> executor) end-to-end latency"
+      test_query: "Investigate the API error spike in EMEA, analyze root cause, and create a fix task"
       max_ms: 5000
       required_fields: ["steps", "total_latency_ms", "agents_involved"]
       notes: "Measured in demo mode. Live mode latency depends on LLM backend."
@@ -67,7 +67,7 @@ benchmark_rubric:
       notes: "llm-d-sc targets sub-20ms uncached. This budget includes gRPC round-trip."
 
     lightweight_workflow_latency:
-      description: "1-agent lightweight workflow (scheduling only) for SIMPLE queries"
+      description: "1-agent lightweight workflow (executor only) for SIMPLE queries"
       max_ms: 2000
       required_fields: ["steps", "total_latency_ms"]
       notes: "Should be significantly faster than comprehensive workflow."

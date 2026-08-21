@@ -82,7 +82,7 @@ stages:
         points: 8
         required: true
       workflow_completes:
-        description: "triage -> clinical -> scheduling workflow runs to completion"
+        description: "research -> analyst -> executor workflow runs to completion"
         points: 8
         required: true
       each_agent_responds:
@@ -135,7 +135,7 @@ stages:
     threshold: 85
     criteria:
       full_workflow_flow:
-        description: "Orchestrator -> triage -> clinical -> scheduling completes"
+        description: "Orchestrator -> research -> analyst -> executor completes"
         points: 15
         required: true
       response_has_real_metrics:

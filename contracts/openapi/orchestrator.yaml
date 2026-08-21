@@ -1,11 +1,11 @@
 openapi: "3.1.0"
 info:
-  title: Multi-Agent Health Assistant Orchestrator API
+  title: Multi-Agent Orchestrator API
   description: >
-    Orchestrates cooperating AI agents using the A2A protocol for healthcare
+    Orchestrates cooperating AI agents using the A2A protocol for multi-agent
     workflows. Discovers agents via agent-card.json, maintains a registry,
     and executes multi-step workflows by delegating tasks to specialized
-    agents (triage, clinical, scheduling). Runs on Intel Xeon CPU.
+    agents (research, analyst, executor). Runs on Intel Xeon CPU.
   version: "1.0.0"
   contact:
     name: Red Hat AI Quickstarts
@@ -63,8 +63,9 @@ paths:
       summary: Run a multi-agent workflow
       description: >
         Executes a multi-agent workflow by delegating tasks to discovered
-        agents sequentially. Supports patient_triage and general workflow
-        types. Each step records the agent, action, result, and latency.
+        agents sequentially. Supports auto, lightweight, standard,
+        comprehensive, and general workflow types. Each step records
+        the agent, action, result, and latency.
       requestBody:
         required: true
         content:
@@ -101,7 +102,7 @@ components:
           type: array
           items:
             type: string
-          example: ["triage", "clinical", "scheduling"]
+          example: ["research", "analyst", "executor"]
         semantic_routing:
           type: string
           enum: [active, inactive]
@@ -132,7 +133,7 @@ components:
           example: "Orchestrate Workflow"
         description:
           type: string
-          example: "Execute a multi-agent healthcare workflow"
+          example: "Execute a multi-agent workflow"
         tags:
           type: array
           items:
@@ -185,11 +186,11 @@ components:
       properties:
         name:
           type: string
-          example: "triage"
+          example: "research"
         url:
           type: string
           format: uri
-          example: "http://triage-agent:8001"
+          example: "http://research-agent:8001"
         status:
           type: string
           example: "active"
@@ -216,10 +217,10 @@ components:
       properties:
         query:
           type: string
-          example: "Patient presents with chest pain and shortness of breath"
+          example: "Investigate the API error spike and recommend a fix"
         workflow_type:
           type: string
-          enum: [auto, lightweight, standard, comprehensive, patient_triage, general]
+          enum: [auto, lightweight, standard, comprehensive, general]
           default: "auto"
           example: "auto"
 
@@ -229,13 +230,13 @@ components:
       properties:
         agent:
           type: string
-          example: "triage"
+          example: "research"
         action:
           type: string
-          example: "classify"
+          example: "investigate"
         result:
           type: string
-          example: "Urgency classification: URGENT"
+          example: "Investigation complete. Key findings gathered."
         latency_ms:
           type: number
           format: float
@@ -294,12 +295,12 @@ components:
           type: array
           items:
             type: string
-          example: ["triage", "clinical", "scheduling"]
+          example: ["research", "analyst", "executor"]
         classification:
           $ref: "#/components/schemas/ClassificationResult"
         ai_disclaimer:
           type: string
-          example: "Agent responses are AI-generated -- verify clinical recommendations with qualified healthcare professionals."
+          example: "Agent responses are AI-generated -- verify recommendations with qualified professionals."
 
     ErrorResponse:
       type: object

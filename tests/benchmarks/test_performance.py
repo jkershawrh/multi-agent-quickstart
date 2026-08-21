@@ -128,7 +128,7 @@ class TestMcpLatency:
                 "jsonrpc": "2.0",
                 "id": "bench-1",
                 "method": "tools/call",
-                "params": {"name": "lookup_patient_record", "arguments": {"patient_id": "PAT-001"}},
+                "params": {"name": "lookup_record", "arguments": {"record_id": "REC-001"}},
             },
             timeout=max_ms / 1000 + 2,
         )

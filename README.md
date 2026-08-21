@@ -37,7 +37,7 @@ Building multi-agent AI systems requires coordinating several concerns: agent di
 ## Example use cases
 
 - **DevOps incident response** -- Research agent investigates an alert, analyst identifies root cause, executor applies the fix and creates follow-up tasks.
-- **Customer support triage** -- Classify ticket complexity, pull relevant knowledge base articles, route to the right team with context.
+- **Customer support routing** -- Classify ticket complexity, pull relevant knowledge base articles, route to the right team with context.
 - **Financial analysis** -- Research market data, analyze trends and risks, execute trades or generate reports.
 - **Healthcare coordination** -- Triage patients, generate clinical recommendations, schedule follow-ups with MCP-backed EHR tools.
 - **Content pipeline** -- Research topics, analyze audience fit, execute publishing and distribution.
@@ -51,6 +51,8 @@ Before executing a workflow, the orchestrator classifies the query's complexity 
 Agents call an MCP (Model Context Protocol) tool server during task processing. Three generic tools are available: record lookup, knowledge base search, and task creation. When a query mentions records, searches, or task assignments, the relevant tools fire automatically and their results are woven into the agent's response. Replace these with your own domain-specific tools to customize.
 
 A bearer token authentication middleware secures inter-agent communication on the `/a2a` endpoint while keeping health checks and agent card discovery open for Kubernetes probes and A2A protocol compliance. In production, replace the shared token with OpenShift service account tokens or mTLS.
+
+The entire stack runs on Intel Xeon processors. Multi-agent workloads benefit from Xeon's core isolation -- each agent is pinned to a dedicated core so inference on one agent does not contend with another, giving predictable per-request latency. The llm-d-sc classifier uses the Candle inference runtime (Rust + BERT), which leverages Xeon's AVX-512 vector extensions for fast embedding computation without a GPU. Ollama serves both Qwen models on CPU, taking advantage of Xeon's large memory bandwidth and cache hierarchy for quantized LLM inference. This architecture demonstrates that production-grade multi-agent systems can run entirely on CPU when workloads are sized appropriately.
 
 A demo mode is available for evaluation and development without LLM backends. All responses carry an AI disclaimer.
 
@@ -202,7 +204,7 @@ What you get on OpenShift that you don't get locally:
 - **Semantic routing** -- llm-d-sc runs as a containerized service with its own Deployment and ClusterIP Service; the orchestrator routes queries through it automatically
 - **Secret-based auth** -- set `auth.enabled: true` in values.yaml to inject bearer tokens via K8s Secrets instead of environment variables
 - **Health probes** -- liveness and readiness probes on every service for automatic restart and traffic management
-- **Resource isolation** -- CPU and memory requests/limits per agent (1 core per agent, configurable in values.yaml)
+- **Intel Xeon core pinning** -- CPU requests/limits per agent (1 core per agent) ensure dedicated compute with no noisy-neighbor contention; configurable in values.yaml
 
 Customize the deployment:
 

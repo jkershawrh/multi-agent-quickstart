@@ -36,10 +36,10 @@ skip_if_no_stack = pytest.mark.skipif(
 class TestFullWorkflowFlow:
 
     def test_comprehensive_workflow_completes(self):
-        """Orchestrator -> triage -> clinical -> scheduling completes end-to-end."""
+        """Orchestrator -> research -> analyst -> executor completes end-to-end."""
         resp = httpx.post(
             f"{ORCHESTRATOR_URL}/api/v1/workflow",
-            json={"query": "Patient with chest pain and shortness of breath", "workflow_type": "comprehensive"},
+            json={"query": "Investigate the API error spike, analyze root cause, and fix it", "workflow_type": "comprehensive"},
             timeout=30.0,
         )
         assert resp.status_code == 200
@@ -47,20 +47,20 @@ class TestFullWorkflowFlow:
         assert len(data["steps"]) == 3
         assert data["total_latency_ms"] > 0
         agents = [s["agent"] for s in data["steps"]]
-        assert "triage" in agents
-        assert "clinical" in agents
-        assert "scheduling" in agents
+        assert "research" in agents
+        assert "analyst" in agents
+        assert "executor" in agents
 
     def test_response_has_real_metrics(self):
         """Response contains real agent names and measured latency."""
         resp = httpx.post(
             f"{ORCHESTRATOR_URL}/api/v1/workflow",
-            json={"query": "Headache for 3 days", "workflow_type": "comprehensive"},
+            json={"query": "Investigate the recent spike in error rates", "workflow_type": "comprehensive"},
             timeout=30.0,
         )
         data = resp.json()
         for step in data["steps"]:
-            assert step["agent"] in ("triage", "clinical", "scheduling")
+            assert step["agent"] in ("research", "analyst", "executor")
             assert step["latency_ms"] > 0
             assert step["result"]
             assert len(step["result"]) > 10
@@ -69,7 +69,7 @@ class TestFullWorkflowFlow:
         """AI-generated content labeled with persistent disclaimers."""
         resp = httpx.post(
             f"{ORCHESTRATOR_URL}/api/v1/workflow",
-            json={"query": "Follow-up appointment needed"},
+            json={"query": "Create a task to review the deployment"},
             timeout=30.0,
         )
         data = resp.json()
@@ -93,7 +93,7 @@ class TestSemanticRoutingE2E:
         """workflow_type=auto triggers semantic routing (or fallback)."""
         resp = httpx.post(
             f"{ORCHESTRATOR_URL}/api/v1/workflow",
-            json={"query": "Schedule a follow-up appointment", "workflow_type": "auto"},
+            json={"query": "Create a task to review the deployment", "workflow_type": "auto"},
             timeout=30.0,
         )
         assert resp.status_code == 200
@@ -111,7 +111,7 @@ class TestSemanticRoutingE2E:
         assert resp.status_code == 200
         data = resp.json()
         assert len(data["steps"]) == 1
-        assert data["steps"][0]["agent"] == "scheduling"
+        assert data["steps"][0]["agent"] == "executor"
 
 
 skip_if_no_mcp = pytest.mark.skipif(
@@ -127,7 +127,7 @@ class TestMcpToolEnrichment:
         """Agent responses include MCP tool data when relevant keywords present."""
         resp = httpx.post(
             f"{ORCHESTRATOR_URL}/api/v1/workflow",
-            json={"query": "Check patient record PAT-001 and schedule appointment", "workflow_type": "comprehensive"},
+            json={"query": "Look up record REC-001 and create a task to follow up", "workflow_type": "comprehensive"},
             timeout=30.0,
         )
         data = resp.json()

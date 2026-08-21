@@ -1,10 +1,10 @@
 openapi: "3.1.0"
 info:
-  title: A2A Healthcare Agent API
+  title: A2A Agent API
   description: >
-    A2A-compliant healthcare agent that serves an agent card for discovery
-    and handles JSON-RPC 2.0 task operations. Each agent instance specializes
-    in a domain (triage, clinical, scheduling). Runs on Intel Xeon CPU.
+    A2A-compliant agent that serves an agent card for discovery and handles
+    JSON-RPC 2.0 task operations. Each agent instance is configured for a
+    role (research, analyst, executor). Runs on Intel Xeon CPU.
   version: "1.0.0"
   contact:
     name: Red Hat AI Quickstarts
@@ -12,11 +12,11 @@ info:
 
 servers:
   - url: http://localhost:8001
-    description: Triage agent
+    description: Research agent
   - url: http://localhost:8002
-    description: Clinical agent
+    description: Analyst agent
   - url: http://localhost:8003
-    description: Scheduling agent
+    description: Executor agent
 
 paths:
   /health:
@@ -79,7 +79,7 @@ components:
           example: "healthy"
         agent:
           type: string
-          example: "triage"
+          example: "research"
         mode:
           type: string
           example: "demo"
@@ -103,13 +103,13 @@ components:
       properties:
         id:
           type: string
-          example: "classify"
+          example: "investigate"
         name:
           type: string
-          example: "Classify Urgency"
+          example: "Investigate"
         description:
           type: string
-          example: "Classify patient case by urgency level"
+          example: "Research a topic and gather relevant information"
         tags:
           type: array
           items:
@@ -125,7 +125,7 @@ components:
       properties:
         name:
           type: string
-          example: "triage"
+          example: "research"
         description:
           type: string
         version:

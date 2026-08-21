@@ -4,7 +4,7 @@ Tests cover:
   - test_agent_card_served -- agent returns valid agent card JSON
   - test_a2a_task_send -- tasks/send creates and returns task
   - test_orchestrator_discovers_agents -- orchestrator finds agents by card
-  - test_workflow_completes -- triage -> clinical -> scheduling workflow
+  - test_workflow_completes -- research -> analyst -> executor workflow
   - test_each_agent_responds_independently -- each agent handles its own tasks
   - test_demo_mode_works -- all agents work without LLM backends
   - test_workflow_steps_have_latency -- each step reports latency
@@ -57,8 +57,8 @@ def _run(coro):
 
 
 @pytest.fixture
-def triage_client():
-    """TestClient for the research agent (aliased as triage_client for compat)."""
+def research_client():
+    """TestClient for the research agent (aliased as research_client for compat)."""
     os.environ["AGENT_NAME"] = "research"
     os.environ["AGENT_SKILLS"] = "investigate,summarize"
     agent.AGENT_NAME = "research"
@@ -67,8 +67,8 @@ def triage_client():
 
 
 @pytest.fixture
-def clinical_client():
-    """TestClient for the analyst agent (aliased as clinical_client for compat)."""
+def analyst_client():
+    """TestClient for the analyst agent (aliased as analyst_client for compat)."""
     os.environ["AGENT_NAME"] = "analyst"
     os.environ["AGENT_SKILLS"] = "analyze,recommend"
     agent.AGENT_NAME = "analyst"
@@ -77,8 +77,8 @@ def clinical_client():
 
 
 @pytest.fixture
-def scheduling_client():
-    """TestClient for the executor agent (aliased as scheduling_client for compat)."""
+def executor_client():
+    """TestClient for the executor agent (aliased as executor_client for compat)."""
     os.environ["AGENT_NAME"] = "executor"
     os.environ["AGENT_SKILLS"] = "execute,report"
     agent.AGENT_NAME = "executor"
@@ -93,9 +93,9 @@ def scheduling_client():
 
 class TestAgentCardServed:
 
-    def test_agent_card_served(self, triage_client):
+    def test_agent_card_served(self, research_client):
         """Agent returns a valid agent card JSON at /.well-known/agent-card.json."""
-        resp = triage_client.get("/.well-known/agent-card.json")
+        resp = research_client.get("/.well-known/agent-card.json")
         assert resp.status_code == 200
 
         card = resp.json()
@@ -108,17 +108,17 @@ class TestAgentCardServed:
         assert len(card["skills"]) > 0
         assert card["name"] == "research"
 
-    def test_agent_card_has_required_a2a_fields(self, triage_client):
+    def test_agent_card_has_required_a2a_fields(self, research_client):
         """Agent card includes all fields required by A2A protocol."""
-        card = triage_client.get("/.well-known/agent-card.json").json()
+        card = research_client.get("/.well-known/agent-card.json").json()
         assert card["protocolVersion"] == "0.2.6"
         assert "capabilities" in card
         assert "defaultInputModes" in card
         assert "defaultOutputModes" in card
 
-    def test_agent_card_skills_have_ids(self, triage_client):
+    def test_agent_card_skills_have_ids(self, research_client):
         """Each skill in the agent card has an id, name, and description."""
-        card = triage_client.get("/.well-known/agent-card.json").json()
+        card = research_client.get("/.well-known/agent-card.json").json()
         for skill in card["skills"]:
             assert "id" in skill, f"Skill missing id: {skill}"
             assert "name" in skill, f"Skill missing name: {skill}"
@@ -132,7 +132,7 @@ class TestAgentCardServed:
 
 class TestA2ATaskSend:
 
-    def test_a2a_task_send(self, triage_client):
+    def test_a2a_task_send(self, research_client):
         """tasks/send creates and returns a completed task with artifacts."""
         rpc_request = {
             "jsonrpc": "2.0",
@@ -143,11 +143,11 @@ class TestA2ATaskSend:
                 "message": {
                     "messageId": "msg-1",
                     "role": "user",
-                    "parts": [{"kind": "text", "text": "Patient with chest pain"}],
+                    "parts": [{"kind": "text", "text": "Investigate the error spike"}],
                 },
             },
         }
-        resp = triage_client.post("/a2a", json=rpc_request)
+        resp = research_client.post("/a2a", json=rpc_request)
         assert resp.status_code == 200
 
         data = resp.json()
@@ -163,7 +163,7 @@ class TestA2ATaskSend:
         assert len(artifact["parts"]) > 0
         assert artifact["parts"][0]["text"]
 
-    def test_a2a_tasks_get(self, triage_client):
+    def test_a2a_tasks_get(self, research_client):
         """tasks/get retrieves task status."""
         rpc_request = {
             "jsonrpc": "2.0",
@@ -171,21 +171,21 @@ class TestA2ATaskSend:
             "method": "tasks/get",
             "params": {"id": "task-001"},
         }
-        resp = triage_client.post("/a2a", json=rpc_request)
+        resp = research_client.post("/a2a", json=rpc_request)
         assert resp.status_code == 200
 
         data = resp.json()
         assert data["result"]["id"] == "task-001"
         assert data["result"]["status"]["state"] == "completed"
 
-    def test_a2a_unknown_method(self, triage_client):
+    def test_a2a_unknown_method(self, research_client):
         """Unknown method returns JSON-RPC error."""
         rpc_request = {
             "jsonrpc": "2.0",
             "id": "test-3",
             "method": "tasks/unknown",
         }
-        resp = triage_client.post("/a2a", json=rpc_request)
+        resp = research_client.post("/a2a", json=rpc_request)
         assert resp.status_code == 200
 
         data = resp.json()
@@ -207,10 +207,10 @@ class TestOrchestratorDiscoversAgents:
         os.environ["AGENT_NAME"] = "research"
         agent.AGENT_NAME = "research"
         agent.AGENT_SKILLS_RAW = "investigate,summarize"
-        triage = TestClient(agent.app)
+        research_tc = TestClient(agent.app)
 
         # Simulate discovery by parsing agent card directly
-        card_resp = triage.get("/.well-known/agent-card.json")
+        card_resp = research_tc.get("/.well-known/agent-card.json")
         card_data = card_resp.json()
 
         skills = [
@@ -256,7 +256,7 @@ class TestOrchestratorDiscoversAgents:
 
 
 # ---------------------------------------------------------------------------
-# Test: workflow completes (triage -> clinical -> scheduling)
+# Test: workflow completes (research -> analyst -> executor)
 # ---------------------------------------------------------------------------
 
 
@@ -296,7 +296,7 @@ class TestWorkflowCompletes:
 
 class TestEachAgentRespondsIndependently:
 
-    def test_each_agent_responds_independently(self, triage_client, clinical_client, scheduling_client):
+    def test_each_agent_responds_independently(self, research_client, analyst_client, executor_client):
         """Each agent handles its own tasks with distinct responses."""
         rpc_request = {
             "jsonrpc": "2.0",
@@ -307,16 +307,16 @@ class TestEachAgentRespondsIndependently:
                 "message": {
                     "messageId": "msg-indep",
                     "role": "user",
-                    "parts": [{"kind": "text", "text": "Patient needs assessment"}],
+                    "parts": [{"kind": "text", "text": "Investigate this issue"}],
                 },
             },
         }
 
         responses = {}
         for name, client in [
-            ("triage", triage_client),
-            ("clinical", clinical_client),
-            ("scheduling", scheduling_client),
+            ("research", research_client),
+            ("analyst", analyst_client),
+            ("executor", executor_client),
         ]:
             resp = client.post("/a2a", json=rpc_request)
             assert resp.status_code == 200
@@ -331,12 +331,12 @@ class TestEachAgentRespondsIndependently:
             assert text, f"Agent {name} returned empty response"
             assert len(text) > 20, f"Agent {name} response too short: {text}"
 
-    def test_agent_health_endpoints_independent(self, triage_client, clinical_client, scheduling_client):
+    def test_agent_health_endpoints_independent(self, research_client, analyst_client, executor_client):
         """Each agent has a working health endpoint."""
         for name, client in [
-            ("triage", triage_client),
-            ("clinical", clinical_client),
-            ("scheduling", scheduling_client),
+            ("research", research_client),
+            ("analyst", analyst_client),
+            ("executor", executor_client),
         ]:
             resp = client.get("/health")
             assert resp.status_code == 200
@@ -351,15 +351,15 @@ class TestEachAgentRespondsIndependently:
 
 class TestDemoModeWorks:
 
-    def test_demo_mode_works(self, triage_client):
+    def test_demo_mode_works(self, research_client):
         """All agents work in demo mode without LLM backends."""
         # Health check
-        health = triage_client.get("/health")
+        health = research_client.get("/health")
         assert health.status_code == 200
         assert health.json()["mode"] == "demo"
 
         # Agent card
-        card = triage_client.get("/.well-known/agent-card.json")
+        card = research_client.get("/.well-known/agent-card.json")
         assert card.status_code == 200
         assert len(card.json()["skills"]) > 0
 
@@ -377,7 +377,7 @@ class TestDemoModeWorks:
                 },
             },
         }
-        resp = triage_client.post("/a2a", json=rpc_request)
+        resp = research_client.post("/a2a", json=rpc_request)
         assert resp.status_code == 200
         data = resp.json()
         assert data["result"]["status"]["state"] == "completed"
@@ -402,21 +402,21 @@ class TestWorkflowStepsHaveLatency:
         # Simulate workflow steps
         steps = [
             models.WorkflowStep(
-                agent="triage",
-                action="classify",
+                agent="research",
+                action="investigate",
                 result="Classification complete",
                 latency_ms=42.5,
             ),
             models.WorkflowStep(
-                agent="clinical",
-                action="diagnose",
+                agent="analyst",
+                action="analyze",
                 result="Diagnosis complete",
                 latency_ms=87.3,
             ),
             models.WorkflowStep(
-                agent="scheduling",
-                action="schedule",
-                result="Scheduling complete",
+                agent="executor",
+                action="execute",
+                result="Execution complete",
                 latency_ms=31.2,
             ),
         ]
@@ -435,12 +435,12 @@ class TestWorkflowStepsHaveLatency:
         response = models.WorkflowResponse(
             steps=[
                 models.WorkflowStep(
-                    agent="triage", action="classify",
+                    agent="research", action="investigate",
                     result="Done", latency_ms=50.0,
                 ),
             ],
             total_latency_ms=50.0,
-            agents_involved=["triage"],
+            agents_involved=["research"],
         )
         assert response.total_latency_ms > 0
         assert response.ai_disclaimer
@@ -451,25 +451,25 @@ class TestWorkflowStepsHaveLatency:
         response = models.WorkflowResponse(
             steps=[
                 models.WorkflowStep(
-                    agent="triage", action="classify",
+                    agent="research", action="investigate",
                     result="Done", latency_ms=50.0,
                 ),
                 models.WorkflowStep(
-                    agent="clinical", action="diagnose",
+                    agent="analyst", action="analyze",
                     result="Done", latency_ms=80.0,
                 ),
                 models.WorkflowStep(
-                    agent="scheduling", action="schedule",
+                    agent="executor", action="execute",
                     result="Done", latency_ms=30.0,
                 ),
             ],
             total_latency_ms=160.0,
-            agents_involved=["triage", "clinical", "scheduling"],
+            agents_involved=["research", "analyst", "executor"],
         )
         assert len(response.agents_involved) == 3
-        assert "triage" in response.agents_involved
-        assert "clinical" in response.agents_involved
-        assert "scheduling" in response.agents_involved
+        assert "research" in response.agents_involved
+        assert "analyst" in response.agents_involved
+        assert "executor" in response.agents_involved
 
 
 # ---------------------------------------------------------------------------
@@ -547,12 +547,12 @@ class TestSemanticRouting:
         response = models.WorkflowResponse(
             steps=[
                 models.WorkflowStep(
-                    agent="scheduling", action="schedule",
+                    agent="executor", action="execute",
                     result="Done", latency_ms=30.0,
                 ),
             ],
             total_latency_ms=38.0,
-            agents_involved=["scheduling"],
+            agents_involved=["executor"],
             classification=classification,
         )
         assert response.classification is not None
@@ -564,12 +564,12 @@ class TestSemanticRouting:
         response = models.WorkflowResponse(
             steps=[
                 models.WorkflowStep(
-                    agent="triage", action="classify",
+                    agent="research", action="investigate",
                     result="Done", latency_ms=50.0,
                 ),
             ],
             total_latency_ms=50.0,
-            agents_involved=["triage"],
+            agents_involved=["research"],
         )
         assert response.classification is None
 
@@ -711,12 +711,12 @@ class TestMcpToolServer:
 
 class TestAgentAuth:
 
-    def test_auth_disabled_by_default(self, triage_client):
+    def test_auth_disabled_by_default(self, research_client):
         """Without AGENT_AUTH_TOKEN, all requests pass through."""
         original_token = auth.AGENT_AUTH_TOKEN
         auth.AGENT_AUTH_TOKEN = ""
         try:
-            resp = triage_client.post("/a2a", json={
+            resp = research_client.post("/a2a", json={
                 "jsonrpc": "2.0", "id": "auth-1", "method": "tasks/get",
                 "params": {"id": "test"},
             })
@@ -724,12 +724,12 @@ class TestAgentAuth:
         finally:
             auth.AGENT_AUTH_TOKEN = original_token
 
-    def test_auth_rejects_missing_token(self, triage_client):
+    def test_auth_rejects_missing_token(self, research_client):
         """With auth enabled, missing token returns 401."""
         original_token = auth.AGENT_AUTH_TOKEN
         auth.AGENT_AUTH_TOKEN = "secret-token"
         try:
-            resp = triage_client.post("/a2a", json={
+            resp = research_client.post("/a2a", json={
                 "jsonrpc": "2.0", "id": "auth-2", "method": "tasks/get",
                 "params": {"id": "test"},
             })
@@ -737,12 +737,12 @@ class TestAgentAuth:
         finally:
             auth.AGENT_AUTH_TOKEN = original_token
 
-    def test_auth_rejects_wrong_token(self, triage_client):
+    def test_auth_rejects_wrong_token(self, research_client):
         """With auth enabled, wrong token returns 403."""
         original_token = auth.AGENT_AUTH_TOKEN
         auth.AGENT_AUTH_TOKEN = "secret-token"
         try:
-            resp = triage_client.post(
+            resp = research_client.post(
                 "/a2a",
                 json={
                     "jsonrpc": "2.0", "id": "auth-3", "method": "tasks/get",
@@ -754,12 +754,12 @@ class TestAgentAuth:
         finally:
             auth.AGENT_AUTH_TOKEN = original_token
 
-    def test_auth_accepts_valid_token(self, triage_client):
+    def test_auth_accepts_valid_token(self, research_client):
         """With auth enabled, valid token passes through."""
         original_token = auth.AGENT_AUTH_TOKEN
         auth.AGENT_AUTH_TOKEN = "secret-token"
         try:
-            resp = triage_client.post(
+            resp = research_client.post(
                 "/a2a",
                 json={
                     "jsonrpc": "2.0", "id": "auth-4", "method": "tasks/get",
@@ -771,22 +771,22 @@ class TestAgentAuth:
         finally:
             auth.AGENT_AUTH_TOKEN = original_token
 
-    def test_health_endpoint_skips_auth(self, triage_client):
+    def test_health_endpoint_skips_auth(self, research_client):
         """Health endpoint is always accessible, even with auth enabled."""
         original_token = auth.AGENT_AUTH_TOKEN
         auth.AGENT_AUTH_TOKEN = "secret-token"
         try:
-            resp = triage_client.get("/health")
+            resp = research_client.get("/health")
             assert resp.status_code == 200
         finally:
             auth.AGENT_AUTH_TOKEN = original_token
 
-    def test_agent_card_skips_auth(self, triage_client):
+    def test_agent_card_skips_auth(self, research_client):
         """Agent card discovery is always accessible."""
         original_token = auth.AGENT_AUTH_TOKEN
         auth.AGENT_AUTH_TOKEN = "secret-token"
         try:
-            resp = triage_client.get("/.well-known/agent-card.json")
+            resp = research_client.get("/.well-known/agent-card.json")
             assert resp.status_code == 200
         finally:
             auth.AGENT_AUTH_TOKEN = original_token
