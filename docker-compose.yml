@@ -1,0 +1,200 @@
+services:
+  orchestrator:
+    build:
+      context: ./src
+      dockerfile: Containerfile
+    ports:
+      - "8000:8000"
+    environment:
+      - AGENT_URLS=http://research-agent:8001,http://analyst-agent:8002,http://executor-agent:8003
+      - SEMANTIC_ROUTER_ENDPOINT=llm-d-sc:50051
+      - MODEL_SIMPLE=qwen2.5:0.5b
+      - MODEL_COMPLEX=qwen2.5:1.5b
+      - AGENT_AUTH_TOKEN=${AGENT_AUTH_TOKEN:-}
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
+    command: ["uvicorn", "orchestrator:app", "--host", "0.0.0.0", "--port", "8000"]
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://localhost:8000/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    depends_on:
+      research-agent:
+        condition: service_healthy
+      analyst-agent:
+        condition: service_healthy
+      executor-agent:
+        condition: service_healthy
+      ollama-pull:
+        condition: service_completed_successfully
+      llm-d-sc:
+        condition: service_healthy
+
+  ollama:
+    image: ollama/ollama
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama_data:/root/.ollama
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://localhost:11434/api/tags"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  ollama-pull:
+    image: ollama/ollama
+    depends_on:
+      ollama:
+        condition: service_healthy
+    entrypoint: ["sh", "-c", "ollama pull qwen2.5:0.5b && ollama pull qwen2.5:1.5b"]
+    environment:
+      - OLLAMA_HOST=http://ollama:11434
+
+  mcp-server:
+    build:
+      context: ./src
+      dockerfile: Containerfile
+    ports:
+      - "8004:8004"
+    environment:
+      - MCP_PORT=8004
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
+    command: ["uvicorn", "mcp_server:app", "--host", "0.0.0.0", "--port", "8004"]
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://localhost:8004/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  research-agent:
+    build:
+      context: ./src
+      dockerfile: Containerfile
+    ports:
+      - "8001:8001"
+    environment:
+      - AGENT_NAME=research
+      - AGENT_SKILLS=investigate,summarize
+      - AGENT_PORT=8001
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
+      - MODEL_ENDPOINT=http://ollama:11434/v1
+      - MODEL_NAME=qwen2.5:1.5b
+      - MCP_SERVER_URL=http://mcp-server:8004
+      - AGENT_AUTH_TOKEN=${AGENT_AUTH_TOKEN:-}
+    command: ["uvicorn", "agent:app", "--host", "0.0.0.0", "--port", "8001"]
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://localhost:8001/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    depends_on:
+      ollama-pull:
+        condition: service_completed_successfully
+
+  analyst-agent:
+    build:
+      context: ./src
+      dockerfile: Containerfile
+    ports:
+      - "8002:8002"
+    environment:
+      - AGENT_NAME=analyst
+      - AGENT_SKILLS=analyze,recommend
+      - AGENT_PORT=8002
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
+      - MODEL_ENDPOINT=http://ollama:11434/v1
+      - MODEL_NAME=qwen2.5:1.5b
+      - MCP_SERVER_URL=http://mcp-server:8004
+      - AGENT_AUTH_TOKEN=${AGENT_AUTH_TOKEN:-}
+    command: ["uvicorn", "agent:app", "--host", "0.0.0.0", "--port", "8002"]
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://localhost:8002/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    depends_on:
+      ollama-pull:
+        condition: service_completed_successfully
+
+  executor-agent:
+    build:
+      context: ./src
+      dockerfile: Containerfile
+    ports:
+      - "8003:8003"
+    environment:
+      - AGENT_NAME=executor
+      - AGENT_SKILLS=execute,report
+      - AGENT_PORT=8003
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
+      - MODEL_ENDPOINT=http://ollama:11434/v1
+      - MODEL_NAME=qwen2.5:1.5b
+      - MCP_SERVER_URL=http://mcp-server:8004
+      - AGENT_AUTH_TOKEN=${AGENT_AUTH_TOKEN:-}
+    command: ["uvicorn", "agent:app", "--host", "0.0.0.0", "--port", "8003"]
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://localhost:8003/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    depends_on:
+      ollama-pull:
+        condition: service_completed_successfully
+
+  model-fetch:
+    image: registry.access.redhat.com/ubi9/python-311:latest
+    volumes:
+      - sc_models:/models
+    entrypoint: ["sh", "-c"]
+    command:
+      - |
+        pip install -q huggingface_hub &&
+        python3 -c "
+        from huggingface_hub import hf_hub_download
+        import os
+        repo = 'cnuland/llm-d-sc-complexity'
+        rev = 'c5f55ef419d268ba843c544dc00988d1e9878044'
+        out = '/models'
+        for f in ['model.safetensors', 'tokenizer.json', 'config.json', 'modules.json']:
+            p = os.path.join(out, f)
+            if not os.path.exists(p) or os.path.getsize(p) == 0:
+                hf_hub_download(repo, f, revision=rev, local_dir=out)
+                print(f'Downloaded {f}')
+            else:
+                print(f'Exists: {f}')
+        os.makedirs(os.path.join(out, '1_Pooling'), exist_ok=True)
+        p = os.path.join(out, '1_Pooling', 'config.json')
+        if not os.path.exists(p) or os.path.getsize(p) == 0:
+            hf_hub_download(repo, '1_Pooling/config.json', revision=rev, local_dir=out)
+            print('Downloaded 1_Pooling/config.json')
+        else:
+            print('Exists: 1_Pooling/config.json')
+        print('Model artifacts ready.')
+        "
+
+  llm-d-sc:
+    build:
+      context: ../../../llm-d-semantic-classifier
+      dockerfile: Containerfile
+    ports:
+      - "50051:50051"
+    environment:
+      - LLM_D_SC_MODEL_DIR=/models
+      - LLM_D_SC_CLASSIFIER=complexity
+      - LLM_D_SC_LISTEN=0.0.0.0:50051
+    volumes:
+      - sc_models:/models
+    healthcheck:
+      test: ["CMD-SHELL", "echo > /dev/tcp/127.0.0.1/50051 2>/dev/null"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+    depends_on:
+      model-fetch:
+        condition: service_completed_successfully
+
+volumes:
+  ollama_data:
+  sc_models:

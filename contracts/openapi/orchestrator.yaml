@@ -1,0 +1,311 @@
+openapi: "3.1.0"
+info:
+  title: Multi-Agent Health Assistant Orchestrator API
+  description: >
+    Orchestrates cooperating AI agents using the A2A protocol for healthcare
+    workflows. Discovers agents via agent-card.json, maintains a registry,
+    and executes multi-step workflows by delegating tasks to specialized
+    agents (triage, clinical, scheduling). Runs on Intel Xeon CPU.
+  version: "1.0.0"
+  contact:
+    name: Red Hat AI Quickstarts
+    url: https://github.com/rh-ai-quickstart
+
+servers:
+  - url: http://localhost:8000
+    description: Local development server
+
+paths:
+  /health:
+    get:
+      operationId: getHealth
+      summary: Health check
+      description: Returns service health status and discovered agent count.
+      responses:
+        "200":
+          description: Service is healthy
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HealthResponse"
+
+  /.well-known/agent-card.json:
+    get:
+      operationId: getAgentCard
+      summary: A2A agent discovery
+      description: >
+        Returns the orchestrator's own A2A agent card for protocol-compliant
+        discovery by other agents or clients.
+      responses:
+        "200":
+          description: Agent card returned
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AgentCard"
+
+  /api/v1/agents:
+    get:
+      operationId: listAgents
+      summary: List discovered agents
+      description: Returns all agents discovered via A2A protocol.
+      responses:
+        "200":
+          description: List of discovered agents
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AgentListResponse"
+
+  /api/v1/workflow:
+    post:
+      operationId: runWorkflow
+      summary: Run a multi-agent workflow
+      description: >
+        Executes a multi-agent workflow by delegating tasks to discovered
+        agents sequentially. Supports patient_triage and general workflow
+        types. Each step records the agent, action, result, and latency.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/WorkflowRequest"
+      responses:
+        "200":
+          description: Workflow completed successfully
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WorkflowResponse"
+        "422":
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+components:
+  schemas:
+    HealthResponse:
+      type: object
+      required: [status, agents_discovered, agent_names, semantic_routing]
+      properties:
+        status:
+          type: string
+          example: "healthy"
+        agents_discovered:
+          type: integer
+          example: 3
+        agent_names:
+          type: array
+          items:
+            type: string
+          example: ["triage", "clinical", "scheduling"]
+        semantic_routing:
+          type: string
+          enum: [active, inactive]
+          example: "active"
+
+    AgentCapabilities:
+      type: object
+      properties:
+        streaming:
+          type: boolean
+          default: false
+        pushNotifications:
+          type: boolean
+          default: false
+        stateTransitionHistory:
+          type: boolean
+          default: true
+
+    AgentSkill:
+      type: object
+      required: [id, name, description]
+      properties:
+        id:
+          type: string
+          example: "orchestrate-workflow"
+        name:
+          type: string
+          example: "Orchestrate Workflow"
+        description:
+          type: string
+          example: "Execute a multi-agent healthcare workflow"
+        tags:
+          type: array
+          items:
+            type: string
+        examples:
+          type: array
+          items:
+            type: string
+
+    AgentCard:
+      type: object
+      required: [name, description, version, url, protocolVersion, skills]
+      properties:
+        name:
+          type: string
+          example: "orchestrator"
+        description:
+          type: string
+        version:
+          type: string
+          example: "0.1.0"
+        url:
+          type: string
+          format: uri
+          example: "http://localhost:8000"
+        protocolVersion:
+          type: string
+          example: "0.2.6"
+        provider:
+          type: string
+          example: "Red Hat / Intel"
+        capabilities:
+          $ref: "#/components/schemas/AgentCapabilities"
+        defaultInputModes:
+          type: array
+          items:
+            type: string
+        defaultOutputModes:
+          type: array
+          items:
+            type: string
+        skills:
+          type: array
+          items:
+            $ref: "#/components/schemas/AgentSkill"
+
+    DiscoveredAgent:
+      type: object
+      required: [name, url, status]
+      properties:
+        name:
+          type: string
+          example: "triage"
+        url:
+          type: string
+          format: uri
+          example: "http://triage-agent:8001"
+        status:
+          type: string
+          example: "active"
+        skills:
+          type: array
+          items:
+            $ref: "#/components/schemas/AgentSkill"
+
+    AgentListResponse:
+      type: object
+      required: [agents, count]
+      properties:
+        agents:
+          type: array
+          items:
+            $ref: "#/components/schemas/DiscoveredAgent"
+        count:
+          type: integer
+          example: 3
+
+    WorkflowRequest:
+      type: object
+      required: [query]
+      properties:
+        query:
+          type: string
+          example: "Patient presents with chest pain and shortness of breath"
+        workflow_type:
+          type: string
+          enum: [auto, lightweight, standard, comprehensive, patient_triage, general]
+          default: "auto"
+          example: "auto"
+
+    WorkflowStep:
+      type: object
+      required: [agent, action, result, latency_ms]
+      properties:
+        agent:
+          type: string
+          example: "triage"
+        action:
+          type: string
+          example: "classify"
+        result:
+          type: string
+          example: "Urgency classification: URGENT"
+        latency_ms:
+          type: number
+          format: float
+          example: 45.2
+
+    ClassificationSignal:
+      type: object
+      required: [label, score]
+      properties:
+        label:
+          type: string
+          example: "COMPLEX"
+        score:
+          type: number
+          format: float
+          example: 0.872
+
+    ClassificationResult:
+      type: object
+      required: [classifier_id, status, signals, selected_workflow, latency_ms]
+      properties:
+        classifier_id:
+          type: string
+          example: "complexity"
+        status:
+          type: string
+          example: "ok"
+        signals:
+          type: array
+          items:
+            $ref: "#/components/schemas/ClassificationSignal"
+        selected_workflow:
+          type: string
+          example: "comprehensive"
+        selected_model:
+          type: string
+          example: "complex"
+        latency_ms:
+          type: number
+          format: float
+          example: 12.5
+
+    WorkflowResponse:
+      type: object
+      required: [steps, total_latency_ms, agents_involved, ai_disclaimer]
+      properties:
+        steps:
+          type: array
+          items:
+            $ref: "#/components/schemas/WorkflowStep"
+        total_latency_ms:
+          type: number
+          format: float
+          example: 312.5
+        agents_involved:
+          type: array
+          items:
+            type: string
+          example: ["triage", "clinical", "scheduling"]
+        classification:
+          $ref: "#/components/schemas/ClassificationResult"
+        ai_disclaimer:
+          type: string
+          example: "Agent responses are AI-generated -- verify clinical recommendations with qualified healthcare professionals."
+
+    ErrorResponse:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: string
+        detail:
+          type: string

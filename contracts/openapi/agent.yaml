@@ -1,0 +1,247 @@
+openapi: "3.1.0"
+info:
+  title: A2A Healthcare Agent API
+  description: >
+    A2A-compliant healthcare agent that serves an agent card for discovery
+    and handles JSON-RPC 2.0 task operations. Each agent instance specializes
+    in a domain (triage, clinical, scheduling). Runs on Intel Xeon CPU.
+  version: "1.0.0"
+  contact:
+    name: Red Hat AI Quickstarts
+    url: https://github.com/rh-ai-quickstart
+
+servers:
+  - url: http://localhost:8001
+    description: Triage agent
+  - url: http://localhost:8002
+    description: Clinical agent
+  - url: http://localhost:8003
+    description: Scheduling agent
+
+paths:
+  /health:
+    get:
+      operationId: getHealth
+      summary: Health check
+      description: Returns agent health status and identity.
+      responses:
+        "200":
+          description: Agent is healthy
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HealthResponse"
+
+  /.well-known/agent-card.json:
+    get:
+      operationId: getAgentCard
+      summary: A2A agent discovery
+      description: >
+        Returns the agent's A2A card with name, description, skills, and
+        protocol version for discovery by orchestrators or other agents.
+      responses:
+        "200":
+          description: Agent card returned
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AgentCard"
+
+  /a2a:
+    post:
+      operationId: a2aEndpoint
+      summary: A2A JSON-RPC 2.0 endpoint
+      description: >
+        Handles A2A protocol JSON-RPC 2.0 requests. Supports tasks/send
+        to create and execute a task, and tasks/get to retrieve task status.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/JsonRpcRequest"
+      responses:
+        "200":
+          description: JSON-RPC response with task result
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/JsonRpcResponse"
+
+components:
+  schemas:
+    HealthResponse:
+      type: object
+      required: [status, agent, mode]
+      properties:
+        status:
+          type: string
+          example: "healthy"
+        agent:
+          type: string
+          example: "triage"
+        mode:
+          type: string
+          example: "demo"
+
+    AgentCapabilities:
+      type: object
+      properties:
+        streaming:
+          type: boolean
+          default: false
+        pushNotifications:
+          type: boolean
+          default: false
+        stateTransitionHistory:
+          type: boolean
+          default: true
+
+    AgentSkill:
+      type: object
+      required: [id, name, description]
+      properties:
+        id:
+          type: string
+          example: "classify"
+        name:
+          type: string
+          example: "Classify Urgency"
+        description:
+          type: string
+          example: "Classify patient case by urgency level"
+        tags:
+          type: array
+          items:
+            type: string
+        examples:
+          type: array
+          items:
+            type: string
+
+    AgentCard:
+      type: object
+      required: [name, description, version, url, protocolVersion, skills]
+      properties:
+        name:
+          type: string
+          example: "triage"
+        description:
+          type: string
+        version:
+          type: string
+          example: "0.1.0"
+        url:
+          type: string
+          format: uri
+          example: "http://localhost:8001"
+        protocolVersion:
+          type: string
+          example: "0.2.6"
+        provider:
+          type: string
+          example: "Red Hat / Intel"
+        capabilities:
+          $ref: "#/components/schemas/AgentCapabilities"
+        defaultInputModes:
+          type: array
+          items:
+            type: string
+        defaultOutputModes:
+          type: array
+          items:
+            type: string
+        skills:
+          type: array
+          items:
+            $ref: "#/components/schemas/AgentSkill"
+
+    Part:
+      type: object
+      properties:
+        kind:
+          type: string
+          default: "text"
+        text:
+          type: string
+
+    TaskStatus:
+      type: object
+      required: [state]
+      properties:
+        state:
+          type: string
+          enum: [submitted, working, completed, failed]
+          example: "completed"
+        timestamp:
+          type: string
+
+    Artifact:
+      type: object
+      required: [parts]
+      properties:
+        artifactId:
+          type: string
+          format: uuid
+        parts:
+          type: array
+          items:
+            $ref: "#/components/schemas/Part"
+
+    Task:
+      type: object
+      required: [id, status]
+      properties:
+        id:
+          type: string
+          format: uuid
+        contextId:
+          type: string
+          format: uuid
+        status:
+          $ref: "#/components/schemas/TaskStatus"
+        artifacts:
+          type: array
+          items:
+            $ref: "#/components/schemas/Artifact"
+        kind:
+          type: string
+          default: "task"
+
+    JsonRpcRequest:
+      type: object
+      required: [jsonrpc, id, method]
+      properties:
+        jsonrpc:
+          type: string
+          example: "2.0"
+        id:
+          type: string
+        method:
+          type: string
+          enum: [tasks/send, tasks/get]
+          example: "tasks/send"
+        params:
+          type: object
+          description: >
+            For tasks/send: {id, message: {messageId, role, parts: [{kind, text}]}}.
+            For tasks/get: {id}.
+
+    JsonRpcResponse:
+      type: object
+      required: [jsonrpc, id]
+      properties:
+        jsonrpc:
+          type: string
+          example: "2.0"
+        id:
+          type: string
+        result:
+          $ref: "#/components/schemas/Task"
+        error:
+          type: object
+          properties:
+            code:
+              type: integer
+            message:
+              type: string

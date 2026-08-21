@@ -1,0 +1,9 @@
+apiVersion: v2
+name: multi-agent-quickstart
+description: Deploy cooperating AI agents with semantic routing, MCP tools, and auth using the A2A protocol.
+type: application
+version: 0.1.0
+appVersion: "1.0.0"
+maintainers:
+  - name: Red Hat AI Quickstarts
+    url: https://github.com/rh-ai-quickstart

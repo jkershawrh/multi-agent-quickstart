@@ -1,0 +1,106 @@
+---
+# LLM configuration
+#
+# Option A: Bring your own model (MaaS - Model as a Service)
+# model:
+#   name: my-model
+#   endpoint: https://my-maas-instance:443
+#   api_key: my-api-key
+#
+# Option B: Deploy with demo mode (no model required)
+model: {}
+
+# Orchestrator configuration
+orchestrator:
+  replicas: 1
+  image: quay.io/rh-ai-quickstart/multi-agent-quickstart:latest
+  port: 8000
+  resources:
+    requests:
+      cpu: "500m"
+      memory: "256Mi"
+    limits:
+      cpu: "2"
+      memory: "512Mi"
+
+# Agent configurations -- each runs on a dedicated Intel Xeon core
+agents:
+  research:
+    replicas: 1
+    image: quay.io/rh-ai-quickstart/multi-agent-quickstart:latest
+    port: 8001
+    env:
+      AGENT_NAME: research
+      AGENT_SKILLS: investigate,summarize
+    resources:
+      requests:
+        cpu: "1"
+        memory: "256Mi"
+      limits:
+        cpu: "1"
+        memory: "512Mi"
+
+  analyst:
+    replicas: 1
+    image: quay.io/rh-ai-quickstart/multi-agent-quickstart:latest
+    port: 8002
+    env:
+      AGENT_NAME: analyst
+      AGENT_SKILLS: analyze,recommend
+    resources:
+      requests:
+        cpu: "1"
+        memory: "256Mi"
+      limits:
+        cpu: "1"
+        memory: "512Mi"
+
+  executor:
+    replicas: 1
+    image: quay.io/rh-ai-quickstart/multi-agent-quickstart:latest
+    port: 8003
+    env:
+      AGENT_NAME: executor
+      AGENT_SKILLS: execute,report
+    resources:
+      requests:
+        cpu: "1"
+        memory: "256Mi"
+      limits:
+        cpu: "1"
+        memory: "512Mi"
+
+# MCP tool server -- data tools for agent workflows
+mcpServer:
+  enabled: true
+  image: quay.io/rh-ai-quickstart/multi-agent-quickstart:latest
+  port: 8004
+  resources:
+    requests:
+      cpu: "250m"
+      memory: "128Mi"
+    limits:
+      cpu: "500m"
+      memory: "256Mi"
+
+# Agent authentication
+auth:
+  enabled: false
+  tokenSecretName: agent-auth-token
+
+# Semantic routing (llm-d-sc) -- classifies query complexity to select workflow
+semanticRouter:
+  enabled: true
+  image: quay.io/rh-ai-quickstart/llm-d-sc:latest
+  modelImage: quay.io/rh-ai-quickstart/llm-d-sc-modelcar:latest
+  grpcPort: 50051
+  classifier: complexity
+  modelSimple: "qwen2.5:0.5b"
+  modelComplex: "qwen2.5:1.5b"
+  resources:
+    requests:
+      cpu: "1"
+      memory: "512Mi"
+    limits:
+      cpu: "2"
+      memory: "1Gi"

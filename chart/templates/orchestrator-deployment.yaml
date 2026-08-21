@@ -1,0 +1,80 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ .Release.Name }}-orchestrator
+  labels:
+    app.kubernetes.io/name: {{ .Release.Name }}-orchestrator
+    app.kubernetes.io/component: orchestrator
+spec:
+  replicas: {{ .Values.orchestrator.replicas }}
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: {{ .Release.Name }}-orchestrator
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: {{ .Release.Name }}-orchestrator
+        app.kubernetes.io/component: orchestrator
+    spec:
+      containers:
+        - name: orchestrator
+          image: {{ .Values.orchestrator.image }}
+          ports:
+            - containerPort: {{ .Values.orchestrator.port }}
+          command: ["uvicorn", "orchestrator:app", "--host", "0.0.0.0", "--port", "{{ .Values.orchestrator.port }}"]
+          env:
+            - name: AGENT_URLS
+              value: "http://{{ .Release.Name }}-research:{{ .Values.agents.research.port }},http://{{ .Release.Name }}-analyst:{{ .Values.agents.analyst.port }},http://{{ .Release.Name }}-executor:{{ .Values.agents.executor.port }}"
+            {{- if .Values.semanticRouter.enabled }}
+            - name: SEMANTIC_ROUTER_ENDPOINT
+              value: "{{ .Release.Name }}-semantic-router:{{ .Values.semanticRouter.grpcPort }}"
+            - name: MODEL_SIMPLE
+              value: {{ .Values.semanticRouter.modelSimple | default "qwen2.5:0.5b" | quote }}
+            - name: MODEL_COMPLEX
+              value: {{ .Values.semanticRouter.modelComplex | default "qwen2.5:1.5b" | quote }}
+            {{- end }}
+            {{- if .Values.auth.enabled }}
+            - name: AGENT_AUTH_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.auth.tokenSecretName }}
+                  key: token
+            {{- end }}
+          resources:
+            {{- toYaml .Values.orchestrator.resources | nindent 12 }}
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: {{ .Values.orchestrator.port }}
+            initialDelaySeconds: 10
+            periodSeconds: 30
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: {{ .Values.orchestrator.port }}
+            initialDelaySeconds: 5
+            periodSeconds: 10
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ .Release.Name }}-orchestrator
+spec:
+  selector:
+    app.kubernetes.io/name: {{ .Release.Name }}-orchestrator
+  ports:
+    - port: {{ .Values.orchestrator.port }}
+      targetPort: {{ .Values.orchestrator.port }}
+---
+apiVersion: route.openshift.io/v1
+kind: Route
+metadata:
+  name: {{ .Release.Name }}
+spec:
+  to:
+    kind: Service
+    name: {{ .Release.Name }}-orchestrator
+  port:
+    targetPort: {{ .Values.orchestrator.port }}
+  tls:
+    termination: edge

@@ -1,0 +1,21 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  name: "{{ .Release.Name }}-test-model-access"
+  annotations:
+    "helm.sh/hook": test
+spec:
+  containers:
+    - name: test
+      image: registry.access.redhat.com/ubi9/ubi-minimal:latest
+      command: ["sh", "-c"]
+      args:
+        - |
+          {{- if .Values.model.endpoint }}
+          curl -sf {{ .Values.model.endpoint }}/v1/models \
+            -H "Authorization: Bearer {{ .Values.model.api_key }}" \
+            && echo "Model access: OK" || exit 1
+          {{- else }}
+          echo "No external model configured — skipping connectivity test"
+          {{- end }}
+  restartPolicy: Never

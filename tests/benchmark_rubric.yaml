@@ -1,0 +1,73 @@
+# Benchmark Rubric -- technique-specific performance validation
+# Governs Stage 4 of the validation matrix.
+
+benchmark_rubric:
+  version: "2.0"
+  description: "Performance validation for multi-agent healthcare workflow with semantic routing, MCP tools, and auth"
+
+  verification_policy:
+    verified_means: "Measured by a live endpoint in the target environment"
+    public_claim_rules:
+      - "Do not publish speedup claims unless claim_registry marks them verified"
+      - "If a feature is configured but unmeasured, present as 'configured and measured'"
+      - "Cost claims use 'estimate' language, never 'guaranteed'"
+
+  run_modes:
+    local:
+      description: "Unit tests, contract validation, static checks"
+      no_cluster_required: true
+    compose:
+      description: "Full docker-compose stack with 6+ services in demo mode"
+      requires: ["podman", "docker-compose"]
+    openshift:
+      description: "Helm deployment on OpenShift with full validation"
+      requires: ["oc", "helm"]
+
+  benchmarks:
+    workflow_latency:
+      description: "3-agent comprehensive workflow (triage -> clinical -> scheduling) end-to-end latency"
+      test_query: "Patient presents with acute chest pain, elevated troponin, and shortness of breath"
+      max_ms: 5000
+      required_fields: ["steps", "total_latency_ms", "agents_involved"]
+      notes: "Measured in demo mode. Live mode latency depends on LLM backend."
+
+    agent_discovery:
+      description: "Time to discover all 3 agents via A2A protocol"
+      max_ms: 2000
+      required_fields: ["agents", "count"]
+      notes: "Includes HTTP GET to /.well-known/agent-card.json for each agent."
+
+    individual_agent_response:
+      description: "Single agent task response latency"
+      max_ms: 1000
+      required_fields: ["result", "status"]
+      notes: "Per-agent latency in demo mode."
+
+    mcp_tool_call:
+      description: "MCP tool call round-trip latency (tools/call -> result)"
+      max_ms: 500
+      required_fields: ["result", "content"]
+      notes: "Measured locally. Network latency in compose/k8s adds overhead."
+
+    mcp_tools_list:
+      description: "MCP tool listing latency (tools/list)"
+      max_ms: 100
+      required_fields: ["tools"]
+      notes: "Static tool definitions, should be near-instant."
+
+    auth_overhead:
+      description: "Per-request overhead added by TokenAuthMiddleware"
+      max_ms: 10
+      notes: "Measured as difference between authenticated and unauthenticated request latency."
+
+    semantic_routing_overhead:
+      description: "Classification call to llm-d-sc (when available)"
+      max_ms: 50
+      required_fields: ["classification"]
+      notes: "llm-d-sc targets sub-20ms uncached. This budget includes gRPC round-trip."
+
+    lightweight_workflow_latency:
+      description: "1-agent lightweight workflow (scheduling only) for SIMPLE queries"
+      max_ms: 2000
+      required_fields: ["steps", "total_latency_ms"]
+      notes: "Should be significantly faster than comprehensive workflow."

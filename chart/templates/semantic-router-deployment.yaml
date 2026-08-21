@@ -1,0 +1,70 @@
+{{- if .Values.semanticRouter.enabled }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ .Release.Name }}-semantic-router
+  labels:
+    app.kubernetes.io/name: {{ .Release.Name }}-semantic-router
+    app.kubernetes.io/component: semantic-router
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: {{ .Release.Name }}-semantic-router
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: {{ .Release.Name }}-semantic-router
+        app.kubernetes.io/component: semantic-router
+    spec:
+      initContainers:
+        - name: modelcar
+          image: {{ .Values.semanticRouter.modelImage }}
+          command: ["/bin/sh", "-c", "cp -R /models/. /shared/"]
+          volumeMounts:
+            - name: models
+              mountPath: /shared
+      containers:
+        - name: llm-d-sc
+          image: {{ .Values.semanticRouter.image }}
+          ports:
+            - containerPort: {{ .Values.semanticRouter.grpcPort }}
+              name: grpc
+          env:
+            - name: LLM_D_SC_MODEL_DIR
+              value: /models
+            - name: LLM_D_SC_CLASSIFIER
+              value: {{ .Values.semanticRouter.classifier | quote }}
+            - name: LLM_D_SC_LISTEN
+              value: "0.0.0.0:{{ .Values.semanticRouter.grpcPort }}"
+          volumeMounts:
+            - name: models
+              mountPath: /models
+          resources:
+            {{- toYaml .Values.semanticRouter.resources | nindent 12 }}
+          readinessProbe:
+            tcpSocket:
+              port: {{ .Values.semanticRouter.grpcPort }}
+            initialDelaySeconds: 10
+            periodSeconds: 5
+          livenessProbe:
+            tcpSocket:
+              port: {{ .Values.semanticRouter.grpcPort }}
+            initialDelaySeconds: 15
+            periodSeconds: 30
+      volumes:
+        - name: models
+          emptyDir: {}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ .Release.Name }}-semantic-router
+spec:
+  selector:
+    app.kubernetes.io/name: {{ .Release.Name }}-semantic-router
+  ports:
+    - name: grpc
+      port: {{ .Values.semanticRouter.grpcPort }}
+      targetPort: {{ .Values.semanticRouter.grpcPort }}
+{{- end }}

@@ -1,0 +1,234 @@
+# Validation Matrix -- CDD -> TDD -> EDD -> BDD
+# Write tests RED, deploy until GREEN. Each stage gates the next.
+
+stages:
+
+  stage_0_contracts:
+    description: "All API contracts defined and parseable"
+    threshold: 100
+    criteria:
+      openapi_spec_valid:
+        description: "OpenAPI spec validates against 3.1"
+        points: 20
+        required: true
+      openapi_has_paths:
+        description: "Spec defines at least one path with operations"
+        points: 20
+        required: true
+      openapi_refs_resolve:
+        description: "All $ref pointers resolve within the spec"
+        points: 20
+        required: true
+      openapi_responses_defined:
+        description: "Every operation has at least one response schema"
+        points: 20
+        required: true
+      mcp_contract_valid:
+        description: "MCP tool server OpenAPI spec parses and refs resolve"
+        points: 20
+        required: true
+
+  stage_1_infrastructure:
+    description: "Containers build, services start, health checks pass"
+    threshold: 90
+    criteria:
+      container_builds:
+        description: "Containerfile builds successfully"
+        points: 15
+        required: true
+      compose_stack_starts:
+        description: "docker-compose stack starts with all health checks passing"
+        points: 15
+        required: true
+      six_services_healthy:
+        description: "Orchestrator + 3 agents + MCP server + llm-d-sc all respond to health"
+        points: 15
+        required: true
+      no_hardcoded_secrets:
+        description: "No API keys, passwords, or secrets in source code"
+        points: 15
+        required: true
+      helm_template_renders:
+        description: "Helm chart renders cleanly with default values"
+        points: 15
+        required: true
+      helm_semantic_router:
+        description: "Helm chart renders semantic-router Deployment and Service"
+        points: 10
+        required: true
+      helm_mcp_server:
+        description: "Helm chart renders mcp-server Deployment and Service"
+        points: 10
+        required: true
+      helm_auth_secret:
+        description: "Helm chart injects auth secret when auth.enabled=true"
+        points: 5
+        required: false
+
+  stage_2_unit:
+    description: "A2A, semantic routing, MCP tools, and auth work in isolation"
+    threshold: 90
+    criteria:
+      agent_card_served:
+        description: "Agent returns valid A2A agent card at /.well-known/agent-card.json"
+        points: 8
+        required: true
+      a2a_task_send:
+        description: "tasks/send creates and returns completed task with artifacts"
+        points: 8
+        required: true
+      orchestrator_discovers_agents:
+        description: "Orchestrator discovers agents via agent card endpoint"
+        points: 8
+        required: true
+      workflow_completes:
+        description: "triage -> clinical -> scheduling workflow runs to completion"
+        points: 8
+        required: true
+      each_agent_responds:
+        description: "Each of 3 agents handles tasks independently"
+        points: 8
+        required: true
+      demo_mode_works:
+        description: "All agents function in demo mode without LLM backends"
+        points: 8
+        required: true
+      workflow_latency:
+        description: "Each workflow step reports positive latency_ms"
+        points: 5
+        required: true
+      semantic_routing_classification:
+        description: "ClassificationResult model validates and maps complexity to workflows"
+        points: 8
+        required: true
+      semantic_routing_workflow_selection:
+        description: "SIMPLE/MEDIUM/COMPLEX/REASONING map to correct workflow types"
+        points: 8
+        required: true
+      semantic_routing_fallback:
+        description: "Orchestrator falls back to comprehensive when llm-d-sc unavailable"
+        points: 5
+        required: true
+      mcp_tools_list:
+        description: "MCP server returns 3 tool definitions via tools/list"
+        points: 5
+        required: true
+      mcp_tools_call:
+        description: "Each MCP tool returns valid results via tools/call"
+        points: 8
+        required: true
+      auth_rejects_missing_token:
+        description: "Auth middleware rejects requests without token when enabled"
+        points: 5
+        required: true
+      auth_accepts_valid_token:
+        description: "Auth middleware passes requests with valid bearer token"
+        points: 5
+        required: true
+      auth_skips_open_paths:
+        description: "Health and agent-card endpoints bypass auth"
+        points: 5
+        required: true
+
+  stage_3_integration:
+    description: "End-to-end flow works from orchestrator through all agents"
+    threshold: 85
+    criteria:
+      full_workflow_flow:
+        description: "Orchestrator -> triage -> clinical -> scheduling completes"
+        points: 15
+        required: true
+      response_has_real_metrics:
+        description: "Response contains real agent names and measured latency"
+        points: 10
+        required: true
+      ai_transparency_labels:
+        description: "AI-generated content labeled with persistent disclaimers"
+        points: 10
+        required: true
+      health_endpoint:
+        description: "Health endpoint returns service status + agent count + semantic_routing status"
+        points: 10
+        required: true
+      mcp_tool_enrichment:
+        description: "Agent responses include MCP tool data when relevant keywords present"
+        points: 15
+        required: true
+      auth_end_to_end:
+        description: "Orchestrator authenticates to agents when AGENT_AUTH_TOKEN is set"
+        points: 10
+        required: true
+      semantic_routing_e2e:
+        description: "workflow_type=auto triggers classification and selects correct workflow"
+        points: 15
+        required: true
+      compose_15_min:
+        description: "docker compose up -> working demo in <= 15 minutes"
+        points: 15
+        required: true
+
+  stage_4_benchmarks:
+    description: "Performance claims meet thresholds"
+    threshold: 80
+    criteria:
+      workflow_under_5s:
+        description: "3-agent comprehensive workflow completes in under 5 seconds in demo mode"
+        points: 25
+        required: true
+      agent_discovery_under_2s:
+        description: "Agent discovery completes in under 2 seconds"
+        points: 25
+        required: true
+      mcp_tool_call_under_500ms:
+        description: "MCP tool call round-trip completes in under 500ms"
+        points: 25
+        required: true
+      auth_overhead_under_10ms:
+        description: "Auth middleware adds less than 10ms overhead per request"
+        points: 25
+        required: true
+
+  stage_5_publication:
+    description: "README passes automated review with zero BLOCKERs"
+    threshold: 100
+    criteria:
+      title_format:
+        description: "H1 title <= 64 chars, starts with action verb"
+        points: 10
+        required: true
+      short_description:
+        description: "Short description <= 160 chars"
+        points: 10
+        required: true
+      required_sections:
+        description: "All required README sections present in correct order"
+        points: 15
+        required: true
+      architecture_diagram:
+        description: "Architecture diagram in docs/images/ with alt text"
+        points: 10
+        required: true
+      no_credentials:
+        description: "No hardcoded credentials in repo"
+        points: 15
+        required: true
+      links_resolve:
+        description: "All links (internal + external) resolve"
+        points: 10
+        required: true
+      industry_tag:
+        description: "Industry tag from approved list"
+        points: 10
+        required: true
+      tag_format:
+        description: "Tags as bulleted list with bold key and normal value"
+        points: 5
+        required: true
+      opl_compliance:
+        description: "Red Hat trademark first-mention-only rule"
+        points: 10
+        required: true
+      accessibility:
+        description: "WCAG 2.2 AA: heading nesting, alt text, descriptive links"
+        points: 5
+        required: true

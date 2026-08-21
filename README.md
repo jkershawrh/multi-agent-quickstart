@@ -1,0 +1,285 @@
+# Build multi-agent AI systems with open protocols
+
+Deploy cooperating AI agents with semantic routing, MCP tool calling, and inter-agent auth on Red Hat OpenShift AI.
+
+## Table of Contents
+
+- [Overview](#overview)
+- [Who is this for](#who-is-this-for)
+- [Example use cases](#example-use-cases)
+- [Detailed description](#detailed-description)
+  - [Architecture diagrams](#architecture-diagrams)
+- [Requirements](#requirements)
+  - [Minimum hardware requirements](#minimum-hardware-requirements)
+  - [Minimum software requirements](#minimum-software-requirements)
+  - [Required user permissions](#required-user-permissions)
+- [Deploy](#deploy)
+  - [Prerequisites](#prerequisites)
+  - [Installation](#installation)
+  - [Validating the deployment](#validating-the-deployment)
+  - [Delete](#delete)
+- [Customizing for your domain](#customizing-for-your-domain)
+- [Repository structure](#repository-structure)
+- [References](#references)
+- [Tags](#tags)
+
+## Overview
+
+Building multi-agent AI systems requires coordinating several concerns: agent discovery, intelligent routing, tool access, authentication, and multi-model orchestration. This quickstart is a domain-agnostic template that demonstrates all five patterns using open protocols. It ships with three example agents (research, analyst, executor) and generic MCP tools that work out of the box. Customize the agent definitions, tools, and demo data to build a multi-agent system for any domain -- healthcare, finance, DevOps, support, or anything else -- on Red Hat OpenShift AI with Intel Xeon processors.
+
+## Who is this for
+
+- **AI engineers** learning agentic patterns: A2A discovery, semantic routing, MCP tool calling, inter-agent auth, and multi-model selection.
+- **Solution architects** designing multi-agent platforms that need a working reference implementation to start from.
+- **System integrators** building interoperable AI services that communicate through open protocols like A2A, MCP, and JSON-RPC 2.0.
+- **DevOps teams** deploying cooperative AI agent workloads on Red Hat OpenShift AI with Intel Xeon processors.
+
+## Example use cases
+
+- **DevOps incident response** -- Research agent investigates an alert, analyst identifies root cause, executor applies the fix and creates follow-up tasks.
+- **Customer support triage** -- Classify ticket complexity, pull relevant knowledge base articles, route to the right team with context.
+- **Financial analysis** -- Research market data, analyze trends and risks, execute trades or generate reports.
+- **Healthcare coordination** -- Triage patients, generate clinical recommendations, schedule follow-ups with MCP-backed EHR tools.
+- **Content pipeline** -- Research topics, analyze audience fit, execute publishing and distribution.
+
+## Detailed description
+
+This quickstart decomposes a multi-step workflow into three independent agents -- research, analyst, and executor -- that communicate through the open A2A protocol. Each agent publishes a machine-readable agent card at `/.well-known/agent-card.json` describing its capabilities and skills. The orchestrator discovers agents automatically, maintains a live registry, and delegates tasks through JSON-RPC 2.0 calls.
+
+Before executing a workflow, the orchestrator sends the query to llm-d-sc -- a low-latency Rust semantic classifier from the llm-d project -- which ranks the query's complexity (SIMPLE, MEDIUM, COMPLEX, REASONING). The orchestrator uses this signal to make two decisions: (1) workflow depth -- simple queries route only to the executor, moderate queries add research, and complex cases invoke the full research-analyst-executor pipeline; (2) model tier -- simple queries use the fast `qwen2.5:0.5b` model while complex queries use the more capable `qwen2.5:1.5b`. When llm-d-sc is unavailable, the orchestrator falls back to the comprehensive workflow with the larger model.
+
+Agents call an MCP (Model Context Protocol) tool server during task processing. Three generic tools are available: record lookup, knowledge base search, and task creation. When a query mentions records, searches, or task assignments, the relevant tools fire automatically and their results are woven into the agent's response. Replace these with your own domain-specific tools to customize.
+
+A bearer token authentication middleware secures inter-agent communication on the `/a2a` endpoint while keeping health checks and agent card discovery open for Kubernetes probes and A2A protocol compliance. In production, replace the shared token with OpenShift service account tokens or mTLS.
+
+A demo mode is available for evaluation and development without LLM backends. All responses carry an AI disclaimer.
+
+![Screenshot of Multi-Agent Quickstart UI](docs/images/screenshot.png)
+
+### Architecture diagrams
+
+```mermaid
+flowchart LR
+    User["User Query"]
+
+    subgraph Orchestrator["Orchestrator (port 8000)"]
+        ORC["FastAPI\nA2A Discovery\nWorkflow Engine"]
+    end
+
+    subgraph SemanticRouting["Semantic Routing"]
+        SC["llm-d-sc\n(gRPC :50051)\ncomplexity classifier"]
+    end
+
+    subgraph Agents["A2A Agents (Intel Xeon -- 1 core per agent)"]
+        RA["Research Agent\n(port 8001)\ninvestigate | summarize"]
+        AA["Analyst Agent\n(port 8002)\nanalyze | recommend"]
+        EA["Executor Agent\n(port 8003)\nexecute | report"]
+    end
+
+    subgraph Tools["MCP Tool Server (port 8004)"]
+        MCP["Record Lookup\nKnowledge Search\nTask Creation"]
+    end
+
+    subgraph LLM["Model Serving (Ollama :11434)"]
+        SM["qwen2.5:0.5b\n(simple queries)"]
+        LM["qwen2.5:1.5b\n(complex queries)"]
+    end
+
+    User -->|"POST /api/v1/workflow"| ORC
+    ORC -->|"gRPC Classify"| SC
+    SC -->|"ranked signals"| ORC
+    ORC -->|"A2A tasks/send\n+ model override"| RA
+    ORC -->|"A2A tasks/send\n+ model override"| AA
+    ORC -->|"A2A tasks/send\n+ model override"| EA
+    RA -->|"MCP tools/call"| MCP
+    AA -->|"MCP tools/call"| MCP
+    EA -->|"MCP tools/call"| MCP
+    RA -->|"/v1/chat/completions"| SM
+    RA -->|"/v1/chat/completions"| LM
+    AA -->|"/v1/chat/completions"| LM
+    EA -->|"/v1/chat/completions"| SM
+```
+
+![Architecture diagram for multi-agent-quickstart](docs/images/architecture.png)
+
+## Requirements
+
+### Minimum hardware requirements
+
+- 6 CPU cores (Intel Xeon recommended -- 1 per agent + 1 orchestrator + 1 MCP server + 1 llm-d-sc)
+- 12 GiB memory (6 GiB for Ollama with 2 models + 4 GiB for services + 2 GiB for llm-d-sc)
+- 8 GiB storage (2 model weights + llm-d-sc classifier artifact + container images)
+
+### Minimum software requirements
+
+- Red Hat OpenShift 4.14+ or OpenShift AI 2.7+
+- Helm 3.12+
+- `oc` CLI 4.14+
+- Podman 4.0+ or Docker Compose (for local development)
+
+### Required user permissions
+
+This quickstart can be deployed by a regular user with namespace-level permissions.
+
+## Deploy
+
+### Prerequisites
+
+- Access to a Red Hat OpenShift cluster or local Podman installation
+- `helm` and `oc` CLI tools installed
+- No external model endpoint required (Ollama is included in the Compose stack; demo mode works without any LLM backend)
+
+### Installation
+
+1. Clone the repository:
+
+```bash
+git clone https://github.com/rh-ai-quickstart/multi-agent-quickstart.git
+cd multi-agent-quickstart
+```
+
+2. Copy and configure environment variables:
+
+```bash
+cp .env.example .env
+# Edit .env to set DEMO_MODE=true if you want demo responses without Ollama
+```
+
+3. **Option A: Quick start with demo.sh** (recommended for first run)
+
+```bash
+./demo.sh
+# Automatically detects Ollama, pulls both models, starts all services
+# Open http://localhost:7860 for the Gradio UI (requires Python 3.10+)
+```
+
+4. **Option B: Local development with Podman Compose**
+
+```bash
+podman compose up -d
+# Ollama will pull qwen2.5:0.5b and qwen2.5:1.5b on first start
+# Verify all services are healthy
+curl http://localhost:8000/health   # Orchestrator
+curl http://localhost:8001/health   # Research agent
+curl http://localhost:8002/health   # Analyst agent
+curl http://localhost:8003/health   # Executor agent
+curl http://localhost:8004/health   # MCP tool server
+```
+
+5. **Option C: Deploy to OpenShift with Helm**
+
+```bash
+oc new-project multi-agent-quickstart
+helm install multi-agent-quickstart chart/
+```
+
+6. **Enable agent authentication** (optional):
+
+```bash
+export AGENT_AUTH_TOKEN=my-secret-token
+```
+
+### Validating the deployment
+
+```bash
+# Check system health and semantic routing status
+curl http://localhost:8000/health
+
+# List discovered agents
+curl http://localhost:8000/api/v1/agents
+
+# Run a simple query (lightweight workflow -- executor only)
+curl -X POST http://localhost:8000/api/v1/workflow \
+  -H "Content-Type: application/json" \
+  -d '{"query": "Create a task to review the deployment", "workflow_type": "lightweight"}'
+
+# Run a complex query (comprehensive workflow -- all 3 agents)
+curl -X POST http://localhost:8000/api/v1/workflow \
+  -H "Content-Type: application/json" \
+  -d '{"query": "Investigate the API error spike, analyze root cause, and fix it"}'
+
+# Check MCP tools
+curl http://localhost:8004/health
+```
+
+### Delete
+
+```bash
+helm uninstall multi-agent-quickstart
+oc delete project multi-agent-quickstart
+```
+
+## Customizing for your domain
+
+This quickstart is designed to be forked and customized. Three files define the domain:
+
+1. **`src/agent.py`** -- Edit `AGENT_CONFIGS` to define your agent names, skills, and descriptions. Edit `DEMO_RESPONSES` to provide domain-specific demo responses. The A2A protocol, MCP integration, and auth work unchanged.
+
+2. **`src/mcp_server.py`** -- Replace the three example tools (`lookup_record`, `search_knowledge_base`, `create_task`) with your domain tools. Keep the MCP JSON-RPC contract (`tools/list`, `tools/call`) and add your own data sources.
+
+3. **`docker-compose.yml` / `chart/values.yaml`** -- Rename services and update environment variables to match your agent names.
+
+Everything else -- the orchestrator, semantic router, auth middleware, Gradio UI, test framework, and Helm templates -- works for any domain without modification.
+
+## Repository structure
+
+```
+.
+├── .env.example              # Environment variable template
+├── .github/
+│   └── workflows/
+│       └── ci.yaml           # GitHub Actions CI pipeline
+├── chart/                    # Helm chart for OpenShift deployment
+│   ├── Chart.yaml
+│   ├── values.yaml
+│   └── templates/
+│       ├── orchestrator-deployment.yaml
+│       ├── agent-deployments.yaml
+│       ├── mcp-server-deployment.yaml
+│       ├── semantic-router-deployment.yaml
+│       └── test-model-access.yaml
+├── contracts/                # API contracts (OpenAPI)
+│   └── openapi/
+│       ├── orchestrator.yaml
+│       ├── agent.yaml
+│       └── mcp.yaml
+├── docs/images/              # Architecture diagrams and screenshots
+├── src/                      # Application source code
+│   ├── orchestrator.py       # Orchestrator with semantic routing
+│   ├── agent.py              # A2A agent with MCP tool calling (customize this)
+│   ├── models.py             # Pydantic models for A2A protocol
+│   ├── auth.py               # Bearer token auth middleware
+│   ├── mcp_server.py         # MCP tool server (customize this)
+│   ├── ui.py                 # Gradio UI
+│   ├── classify_pb2.py       # Generated gRPC stubs (llm-d-sc)
+│   ├── classify_pb2_grpc.py  # Generated gRPC client (llm-d-sc)
+│   ├── Containerfile         # Container image definition
+│   └── requirements.txt      # Python dependencies
+├── tests/                    # CDD -> TDD -> EDD validation
+├── docker-compose.yml        # Local dev stack
+├── demo.sh                   # One-command launcher
+├── Makefile                  # Test targets: make test-all
+├── LICENSE
+└── README.md
+```
+
+## References
+
+- [A2A Protocol Specification](https://google.github.io/A2A/) -- Open protocol for agent-to-agent discovery, delegation, and task management.
+- [llm-d-sc Semantic Classifier](https://github.com/llm-d-incubation/llm-d-semantic-classifier) -- Low-latency Rust service for semantic classification of inference requests, part of the llm-d project.
+- [Model Context Protocol (MCP)](https://modelcontextprotocol.io/) -- Open protocol for connecting AI models to external tools and data sources.
+- [Intel Xeon for Multi-Service Workloads](https://www.intel.com/content/www/us/en/products/details/processors/xeon.html) -- Core-per-agent isolation and predictable performance for AI services.
+- [Red Hat OpenShift AI Documentation](https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/) -- Enterprise AI platform for deploying and managing AI workloads.
+- [FastAPI Documentation](https://fastapi.tiangolo.com/) -- High-performance Python web framework for building APIs.
+- [JSON-RPC 2.0 Specification](https://www.jsonrpc.org/specification) -- Lightweight remote procedure call protocol used by A2A.
+- [Ollama](https://ollama.com/) -- Local LLM serving with OpenAI-compatible API.
+
+## Tags
+
+- **Title:** Build multi-agent AI systems with open protocols
+- **Description:** Deploy cooperating AI agents with semantic routing, MCP tool calling, and inter-agent auth on Red Hat OpenShift AI.
+- **Industry:** Media and IT services
+- **Product:** Red Hat OpenShift AI
+- **Use case:** AI inference
+- **Partner:** Intel
+- **Contributor org:** Red Hat

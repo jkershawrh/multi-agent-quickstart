@@ -1,0 +1,79 @@
+# Claim Provenance Registry -- every factual assertion in the quickstart
+# Run `make audit-claims` to see unverified claims
+#
+# Rules:
+#   - Every number shown in the UI MUST have an entry here
+#   - Claims with verified: false display with "projected" or "paper reference" label
+#   - Speedup claims require minimum_speedup_for_claim threshold met on live hardware
+#   - Cost claims use "contributes to" / "estimate" language, never "guaranteed"
+
+claims:
+  - id: a2a-protocol
+    value: "Agent-to-Agent protocol for discovery and delegation"
+    file: src/orchestrator.py
+    line: 1
+    source: "A2A protocol spec v0.2.6 -- implemented via /.well-known/agent-card.json and /a2a JSON-RPC"
+    source_url: ""
+    verified: true
+    verified_date: "2025-01-15"
+    notes: "Protocol compliance verified by unit tests: agent card served, tasks/send works, tasks/get works"
+
+  - id: multi-agent-workflow
+    value: "3-agent cooperative workflow"
+    file: src/orchestrator.py
+    line: 207
+    source: "Demonstrated by triage -> clinical -> scheduling pipeline executing in sequence via A2A"
+    source_url: ""
+    verified: true
+    verified_date: "2025-01-15"
+    notes: "Workflow completion verified by unit test: test_workflow_completes"
+
+  - id: semantic-routing
+    value: "llm-d-sc complexity classifier selects workflow depth"
+    file: src/orchestrator.py
+    line: 132
+    source: "llm-d-sc gRPC Classify() returns ranked SIMPLE/MEDIUM/COMPLEX/REASONING signals; orchestrator maps to workflow"
+    source_url: "https://github.com/llm-d-incubation/llm-d-semantic-classifier"
+    verified: true
+    verified_date: "2026-08-21"
+    notes: "Routing logic verified by unit tests: test_auto_workflow_selects_by_complexity, test_expanded_workflow_definitions, test_semantic_router_fallback_comprehensive"
+
+  - id: semantic-routing-fallback
+    value: "Falls back to comprehensive workflow when llm-d-sc unavailable"
+    file: src/orchestrator.py
+    line: 254
+    source: "SemanticRouter.classify() returns None on connection failure; orchestrator defaults to comprehensive"
+    source_url: ""
+    verified: true
+    verified_date: "2026-08-21"
+    notes: "Verified by test_semantic_router_fallback_comprehensive"
+
+  - id: mcp-tool-calling
+    value: "3 MCP tools for healthcare data (patient records, drug interactions, scheduling)"
+    file: src/mcp_server.py
+    line: 1
+    source: "MCP JSON-RPC server with tools/list and tools/call endpoints; agents call tools during task processing"
+    source_url: ""
+    verified: true
+    verified_date: "2026-08-21"
+    notes: "Tool functionality verified by TestMcpToolServer (8 tests covering all tools, error cases, and protocol compliance)"
+
+  - id: agent-auth
+    value: "Bearer token authentication between orchestrator and agents"
+    file: src/auth.py
+    line: 1
+    source: "TokenAuthMiddleware validates Authorization header on /a2a; skips /health and /.well-known/"
+    source_url: ""
+    verified: true
+    verified_date: "2026-08-21"
+    notes: "Auth verified by TestAgentAuth (6 tests: disabled, reject missing, reject wrong, accept valid, skip health, skip agent-card)"
+
+  - id: complexity-classifier-accuracy
+    value: "0.975 accuracy on complexity classification"
+    file: README.md
+    line: 0
+    source: "llm-d-sc fine-tuned model accuracy -- measured by llm-d-sc project, not by this quickstart"
+    source_url: "https://github.com/llm-d-incubation/llm-d-semantic-classifier"
+    verified: false
+    verified_date: ""
+    notes: "Accuracy claim from upstream project. Not independently verified in this quickstart."

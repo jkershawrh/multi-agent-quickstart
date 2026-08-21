@@ -1,0 +1,106 @@
+openapi: "3.1.0"
+info:
+  title: MCP Tool Server API
+  description: >
+    Healthcare tool server implementing the Model Context Protocol (MCP)
+    over HTTP. Exposes tools for patient record lookup, drug interaction
+    checking, and appointment scheduling. Runs on Intel Xeon CPU.
+  version: "1.0.0"
+  contact:
+    name: Red Hat AI Quickstarts
+    url: https://github.com/rh-ai-quickstart
+
+servers:
+  - url: http://localhost:8004
+    description: MCP tool server
+
+paths:
+  /health:
+    get:
+      operationId: getHealth
+      summary: Health check
+      description: Returns tool server health and available tool count.
+      responses:
+        "200":
+          description: Server is healthy
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HealthResponse"
+
+  /mcp:
+    post:
+      operationId: mcpEndpoint
+      summary: MCP JSON-RPC endpoint
+      description: >
+        Handles MCP protocol JSON-RPC 2.0 requests. Supports tools/list
+        to enumerate available tools, and tools/call to invoke a tool.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/McpRequest"
+      responses:
+        "200":
+          description: JSON-RPC response
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/McpResponse"
+
+components:
+  schemas:
+    HealthResponse:
+      type: object
+      required: [status, tools_available, tool_names]
+      properties:
+        status:
+          type: string
+          example: "healthy"
+        tools_available:
+          type: integer
+          example: 3
+        tool_names:
+          type: array
+          items:
+            type: string
+          example: ["lookup_patient_record", "check_drug_interactions", "find_available_slots"]
+
+    McpRequest:
+      type: object
+      required: [jsonrpc, method]
+      properties:
+        jsonrpc:
+          type: string
+          example: "2.0"
+        id:
+          type: string
+        method:
+          type: string
+          enum: [tools/list, tools/call]
+          example: "tools/call"
+        params:
+          type: object
+          description: >
+            For tools/call: {name: string, arguments: object}.
+            For tools/list: no params required.
+
+    McpResponse:
+      type: object
+      required: [jsonrpc]
+      properties:
+        jsonrpc:
+          type: string
+          example: "2.0"
+        id:
+          type: string
+        result:
+          type: object
+        error:
+          type: object
+          properties:
+            code:
+              type: integer
+            message:
+              type: string
