@@ -67,7 +67,7 @@ flowchart LR
     end
 
     subgraph SemanticRouting["Semantic Routing"]
-        SC["llm-d-sc\n(gRPC :50051)\ncomplexity classifier"]
+        SC["llm-d-sc (gRPC :50051)\nor LLM fallback (Ollama)\ncomplexity classifier"]
     end
 
     subgraph Agents["A2A Agents (Intel Xeon -- 1 core per agent)"]
@@ -86,11 +86,11 @@ flowchart LR
     end
 
     User -->|"POST /api/v1/workflow"| ORC
-    ORC -->|"gRPC Classify"| SC
-    SC -->|"ranked signals"| ORC
-    ORC -->|"A2A tasks/send\n+ model override"| RA
-    ORC -->|"A2A tasks/send\n+ model override"| AA
-    ORC -->|"A2A tasks/send\n+ model override"| EA
+    ORC -->|"gRPC or LLM classify"| SC
+    SC -->|"SIMPLE / COMPLEX"| ORC
+    ORC -->|"A2A tasks/send\n+ Bearer token\n+ model override"| RA
+    ORC -->|"A2A tasks/send\n+ Bearer token\n+ model override"| AA
+    ORC -->|"A2A tasks/send\n+ Bearer token\n+ model override"| EA
     RA -->|"MCP tools/call"| MCP
     AA -->|"MCP tools/call"| MCP
     EA -->|"MCP tools/call"| MCP
