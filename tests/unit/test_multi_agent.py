@@ -578,11 +578,31 @@ class TestSemanticRouting:
         request = models.WorkflowRequest(query="test query")
         assert request.workflow_type == "auto"
 
-    def test_semantic_router_fallback_comprehensive(self):
-        """SemanticRouter with no endpoint returns None from classify."""
-        router = orchestrator.SemanticRouter("")
-        result = _run(router.classify("test"))
-        assert result is None
+    def test_semantic_router_inactive_returns_none(self):
+        """SemanticRouter with no endpoint and no LLM returns None."""
+        original = orchestrator.MODEL_ENDPOINT
+        orchestrator.MODEL_ENDPOINT = ""
+        try:
+            router = orchestrator.SemanticRouter("")
+            _run(router.connect())
+            assert router.mode == "inactive"
+            assert not router.active
+            result = _run(router.classify("test"))
+            assert result is None
+        finally:
+            orchestrator.MODEL_ENDPOINT = original
+
+    def test_semantic_router_llm_fallback_activates(self):
+        """SemanticRouter uses LLM fallback when MODEL_ENDPOINT is set."""
+        original = orchestrator.MODEL_ENDPOINT
+        orchestrator.MODEL_ENDPOINT = "http://fake:11434/v1"
+        try:
+            router = orchestrator.SemanticRouter("")
+            _run(router.connect())
+            assert router.mode == "llm-fallback"
+            assert router.active
+        finally:
+            orchestrator.MODEL_ENDPOINT = original
 
 
 # ---------------------------------------------------------------------------

@@ -54,8 +54,6 @@ A bearer token authentication middleware secures inter-agent communication on th
 
 A demo mode is available for evaluation and development without LLM backends. All responses carry an AI disclaimer.
 
-![Screenshot of Multi-Agent Quickstart UI](docs/images/screenshot.png)
-
 ### Architecture diagrams
 
 ```mermaid
@@ -112,10 +110,10 @@ This quickstart runs locally on CPU or on Red Hat OpenShift. Choose the path tha
 | **Hardware** | 4 CPU cores, 8 GiB memory | 6+ CPU cores, 12 GiB memory |
 | **Software** | Python 3.9+, Ollama | OpenShift 4.14+, Helm 3.12+ |
 | **Models** | Ollama serves both locally | Ollama in-cluster or external MaaS |
-| **Semantic routing** | Optional (needs llm-d-sc binary) | Included (containerized llm-d-sc) |
+| **Semantic routing** | LLM-based fallback (uses Ollama) | llm-d-sc (sub-20ms) + LLM fallback |
 | **Sandboxing** | Process-level isolation | Pod SecurityContext, restricted profiles |
 | **Auth** | Shared bearer token (optional) | K8s Secrets, service account tokens |
-| **Tracing** | Log-based latency tracking | OpenTelemetry to Jaeger/Tempo (roadmap) |
+| **Tracing** | Log-based latency tracking | Per-step latency in workflow response |
 | **Time to first workflow** | ~2 minutes | ~10 minutes |
 
 ### Minimum hardware requirements
@@ -277,6 +275,42 @@ This quickstart is designed to be forked and customized. Three files define the 
 3. **`docker-compose.yml` / `chart/values.yaml`** -- Rename services and update environment variables to match your agent names.
 
 Everything else -- the orchestrator, semantic router, auth middleware, Gradio UI, test framework, and Helm templates -- works for any domain without modification.
+
+**Example: building a support ticket system.** To turn this into a support ticket agent:
+
+```python
+# In src/agent.py, replace the AGENT_CONFIGS entry:
+AGENT_CONFIGS = {
+    "classifier": {
+        "description": "Classifies incoming support tickets by category and urgency.",
+        "skills": [
+            AgentSkill(id="classify", name="Classify Ticket", description="..."),
+        ],
+    },
+    "resolver": {
+        "description": "Suggests resolutions by searching past tickets and KB articles.",
+        "skills": [
+            AgentSkill(id="resolve", name="Suggest Resolution", description="..."),
+        ],
+    },
+    "dispatcher": {
+        "description": "Assigns tickets to the right team and sends notifications.",
+        "skills": [
+            AgentSkill(id="dispatch", name="Dispatch Ticket", description="..."),
+        ],
+    },
+}
+
+# In src/mcp_server.py, replace the tools:
+# - lookup_ticket(ticket_id) -- fetch from your ticket system API
+# - search_past_resolutions(keywords) -- search resolved ticket history
+# - assign_ticket(ticket_id, team) -- assign via your ticketing API
+
+# In docker-compose.yml, rename the services:
+# research-agent -> classifier-agent, analyst-agent -> resolver-agent, etc.
+```
+
+The orchestrator, semantic routing, auth, and UI work unchanged -- they only care about agent names and the A2A protocol, not what the agents do internally.
 
 ## Repository structure
 

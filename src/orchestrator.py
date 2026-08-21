@@ -48,6 +48,8 @@ AGENT_URLS = os.environ.get(
 
 SEMANTIC_ROUTER_ENDPOINT = os.environ.get("SEMANTIC_ROUTER_ENDPOINT", "")
 
+MODEL_ENDPOINT = os.environ.get("MODEL_ENDPOINT", "")
+MODEL_NAME = os.environ.get("MODEL_NAME", "qwen2.5:1.5b")
 MODEL_SIMPLE = os.environ.get("MODEL_SIMPLE", "qwen2.5:0.5b")
 MODEL_COMPLEX = os.environ.get("MODEL_COMPLEX", "qwen2.5:1.5b")
 
@@ -161,31 +163,58 @@ COMPLEXITY_TO_MODEL = {
 }
 
 
+LLM_CLASSIFY_PROMPT = (
+    "Classify the following query's complexity into exactly one label: "
+    "SIMPLE, MEDIUM, COMPLEX, or REASONING.\n\n"
+    "SIMPLE = single fact lookup, status check, or straightforward action.\n"
+    "MEDIUM = requires some analysis or a multi-step procedure.\n"
+    "COMPLEX = requires deep investigation, synthesis across domains, or architecture.\n"
+    "REASONING = requires formal reasoning, proofs, or multi-step logical deduction.\n\n"
+    "Reply with ONLY the label, nothing else.\n\nQuery: {query}"
+)
+
+VALID_LABELS = {"SIMPLE", "MEDIUM", "COMPLEX", "REASONING"}
+
+
 class SemanticRouter:
-    """Classifies queries via llm-d-sc gRPC and selects workflows."""
+    """Classifies queries via llm-d-sc gRPC or LLM fallback."""
 
     def __init__(self, endpoint: str):
         self.endpoint = endpoint
         self.channel = None
         self.stub = None
+        self.mode = "inactive"
 
     async def connect(self):
-        if not GRPC_AVAILABLE:
-            logger.warning("grpc not installed -- semantic routing disabled")
-            return
-        if not self.endpoint:
-            return
-        try:
-            self.channel = grpc.aio.insecure_channel(self.endpoint)
-            self.stub = classify_pb2_grpc.ClassifyStub(self.channel)
-            logger.info("Semantic router connected: %s", self.endpoint)
-        except Exception as e:
-            logger.warning("Semantic router connection failed: %s", e)
-            self.stub = None
+        if self.endpoint and GRPC_AVAILABLE:
+            try:
+                self.channel = grpc.aio.insecure_channel(self.endpoint)
+                self.stub = classify_pb2_grpc.ClassifyStub(self.channel)
+                self.mode = "llm-d-sc"
+                logger.info("Semantic router connected (llm-d-sc): %s", self.endpoint)
+                return
+            except Exception as e:
+                logger.warning("llm-d-sc connection failed: %s", e)
+
+        if MODEL_ENDPOINT:
+            self.mode = "llm-fallback"
+            logger.info("Semantic router using LLM fallback via %s", MODEL_ENDPOINT)
+        else:
+            self.mode = "inactive"
+            logger.info("Semantic routing disabled (no llm-d-sc or LLM endpoint)")
+
+    @property
+    def active(self) -> bool:
+        return self.mode != "inactive"
 
     async def classify(self, text: str) -> Optional[models.ClassificationResult]:
-        if not self.stub:
-            return None
+        if self.mode == "llm-d-sc" and self.stub:
+            return await self._classify_grpc(text)
+        elif self.mode == "llm-fallback":
+            return await self._classify_llm(text)
+        return None
+
+    async def _classify_grpc(self, text: str) -> Optional[models.ClassificationResult]:
         start = time.monotonic()
         try:
             request = classify_pb2.ClassifyRequest(
@@ -196,10 +225,8 @@ class SemanticRouter:
             latency_ms = round((time.monotonic() - start) * 1000, 2)
 
             if response.status != classify_pb2.OK:
-                logger.warning(
-                    "Semantic router returned status %s", response.status
-                )
-                return None
+                logger.warning("llm-d-sc returned status %s, falling back", response.status)
+                return await self._classify_llm(text)
 
             signals = [
                 models.ClassificationSignal(label=s.label, score=round(s.score, 4))
@@ -218,7 +245,47 @@ class SemanticRouter:
                 latency_ms=latency_ms,
             )
         except Exception as e:
-            logger.warning("Semantic classification failed: %s", e)
+            logger.warning("llm-d-sc classify failed (%s), trying LLM fallback", e)
+            return await self._classify_llm(text)
+
+    async def _classify_llm(self, text: str) -> Optional[models.ClassificationResult]:
+        if not MODEL_ENDPOINT:
+            return None
+        start = time.monotonic()
+        try:
+            async with httpx.AsyncClient(timeout=15.0) as client:
+                resp = await client.post(
+                    f"{MODEL_ENDPOINT}/chat/completions",
+                    json={
+                        "model": MODEL_NAME,
+                        "messages": [
+                            {"role": "user", "content": LLM_CLASSIFY_PROMPT.format(query=text[:500])},
+                        ],
+                        "temperature": 0,
+                        "max_tokens": 10,
+                    },
+                )
+                resp.raise_for_status()
+                data = resp.json()
+            raw = data["choices"][0]["message"]["content"].strip().upper()
+            label = raw.split()[0].strip(".,!") if raw else "COMPLEX"
+            if label not in VALID_LABELS:
+                label = "COMPLEX"
+            latency_ms = round((time.monotonic() - start) * 1000, 2)
+
+            selected = COMPLEXITY_TO_WORKFLOW.get(label, "comprehensive")
+            model_tier = COMPLEXITY_TO_MODEL.get(label, "complex")
+
+            return models.ClassificationResult(
+                classifier_id="llm-fallback",
+                status="ok",
+                signals=[models.ClassificationSignal(label=label, score=1.0)],
+                selected_workflow=selected,
+                selected_model=model_tier,
+                latency_ms=latency_ms,
+            )
+        except Exception as e:
+            logger.warning("LLM classification failed: %s", e)
             return None
 
     async def close(self):
@@ -261,7 +328,7 @@ async def execute_workflow(
 
     model_override = ""
 
-    if workflow_type == "auto" and semantic_router.stub:
+    if workflow_type == "auto" and semantic_router.active:
         classification = await semantic_router.classify(query)
         if classification:
             workflow_type = classification.selected_workflow
@@ -357,8 +424,7 @@ semantic_router = SemanticRouter(SEMANTIC_ROUTER_ENDPOINT)
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Discover agents and connect to semantic router on startup."""
-    if SEMANTIC_ROUTER_ENDPOINT:
-        await semantic_router.connect()
+    await semantic_router.connect()
 
     urls = [u.strip() for u in AGENT_URLS.split(",") if u.strip()]
     logger.info("Discovering %d agents...", len(urls))
@@ -409,7 +475,7 @@ async def health():
         "status": "healthy",
         "agents_discovered": len(agents),
         "agent_names": [a.name for a in agents],
-        "semantic_routing": "active" if semantic_router.stub else "inactive",
+        "semantic_routing": semantic_router.mode,
     }
 
 
