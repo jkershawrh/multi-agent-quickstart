@@ -1,14 +1,29 @@
 ---
 # LLM configuration
 #
-# Option A: Bring your own model (MaaS - Model as a Service)
-# model:
-#   name: my-model
-#   endpoint: https://my-maas-instance:443
-#   api_key: my-api-key
+# Option A (recommended): Deploy with Red Hat AI Inference Server (vLLM)
+# Set model.deploy=true to create a ServingRuntime + InferenceService.
+# The endpoint is auto-wired to agents and orchestrator.
 #
-# Option B: Deploy with demo mode (no model required)
-model: {}
+# Option B: Bring your own model (MaaS - Model as a Service)
+# Set model.endpoint to your external inference endpoint.
+#
+# Option C: Demo mode (no model required)
+# Leave model.endpoint empty and set DEMO_MODE=true on agents.
+model:
+  deploy: false
+  endpoint: ""
+  name: "Qwen/Qwen2.5-1.5B-Instruct"
+  simpleModel: "Qwen/Qwen2.5-0.5B-Instruct"
+  complexModel: "Qwen/Qwen2.5-1.5B-Instruct"
+  image: quay.io/modh/vllm:rhoai-2.20
+  resources:
+    requests:
+      cpu: "4"
+      memory: "8Gi"
+    limits:
+      cpu: "8"
+      memory: "16Gi"
 
 # Orchestrator configuration
 orchestrator:

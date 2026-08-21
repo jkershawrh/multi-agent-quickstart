@@ -40,6 +40,15 @@ spec:
               value: {{ $agent.env.AGENT_SKILLS | quote }}
             - name: AGENT_PORT
               value: {{ $agent.port | quote }}
+            {{- if $.Values.model.deploy }}
+            - name: MODEL_ENDPOINT
+              value: "http://{{ $.Release.Name }}-vllm:8000/v1"
+            {{- else if $.Values.model.endpoint }}
+            - name: MODEL_ENDPOINT
+              value: {{ $.Values.model.endpoint | quote }}
+            {{- end }}
+            - name: MODEL_NAME
+              value: {{ $.Values.model.name | quote }}
             {{- if $.Values.mcpServer.enabled }}
             - name: MCP_SERVER_URL
               value: "http://{{ $.Release.Name }}-mcp-server:{{ $.Values.mcpServer.port }}"
