@@ -1,7 +1,4 @@
-# GitHub Actions workflow template for Intel quickstarts
-# Copy to .github/workflows/ in each quickstart repo
-
-name: Lint and Test
+name: CI
 
 on:
   push:
@@ -9,7 +6,15 @@ on:
   pull_request:
     branches: [main]
 
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
+  # ── Stage 0: Contract validation ─────────────────────────────────
   contracts:
     name: "Stage 0: Contracts"
     runs-on: ubuntu-latest
@@ -21,19 +26,128 @@ jobs:
       - run: pip install pyyaml pytest
       - run: make test-contracts
 
+  # ── Stage 1: Infrastructure ──────────────────────────────────────
+  container-build:
+    name: "Stage 1: Container Build"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build container image
+        run: podman build -t multi-agent-quickstart:test -f src/Containerfile src/
+      - name: Verify image runs
+        run: |
+          podman run --rm -d --name test-agent \
+            -e AGENT_NAME=research -e AGENT_SKILLS=investigate -e AGENT_PORT=8001 -e DEMO_MODE=true \
+            -p 8001:8001 multi-agent-quickstart:test \
+            uvicorn agent:app --host 0.0.0.0 --port 8001
+          sleep 5
+          curl -sf http://localhost:8001/health | python3 -c "import sys,json; d=json.load(sys.stdin); assert d['status']=='healthy', d"
+          podman stop test-agent
+
+  helm-lint:
+    name: "Stage 1: Helm Lint"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: azure/setup-helm@v4
+      - name: Lint chart
+        run: helm lint chart/
+      - name: Template renders (default)
+        run: helm template test chart/ > /dev/null
+      - name: Template renders (vLLM enabled)
+        run: helm template test chart/ --set model.deploy=true > /dev/null
+      - name: Template renders (auth enabled)
+        run: helm template test chart/ --set auth.enabled=true > /dev/null
+      - name: Template renders (semantic router disabled)
+        run: helm template test chart/ --set semanticRouter.enabled=false > /dev/null
+
+  secrets-scan:
+    name: "Stage 1: Secrets Scan"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check for hardcoded secrets
+        run: |
+          ! grep -rn --include="*.py" --include="*.yaml" --include="*.yml" \
+            --include="*.json" --include="*.env" \
+            -E '(api_key|password|secret)\s*[:=]\s*["'"'"'][^{$]' src/ chart/ \
+            || (echo "FAIL: hardcoded secrets found" && exit 1)
+          echo "No hardcoded secrets found"
+
+  # ── Stage 2: Unit tests ──────────────────────────────────────────
   unit:
     name: "Stage 2: Unit Tests"
     runs-on: ubuntu-latest
+    needs: [contracts]
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
-      - run: pip install -r src/requirements.txt pytest
-      - run: make test-unit
+      - name: Install dependencies
+        run: pip install -r src/requirements.txt pytest
+      - name: Run unit tests
+        run: make test-unit
 
-  lint:
-    name: Lint
+  # ── Stage 3: Integration tests (demo mode) ──────────────────────
+  integration:
+    name: "Stage 3: Integration (demo mode)"
+    runs-on: ubuntu-latest
+    needs: [unit, container-build]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install dependencies
+        run: pip install -r src/requirements.txt pytest httpx
+      - name: Start services in demo mode
+        run: |
+          cd src
+          export DEMO_MODE=true
+          export MODEL_ENDPOINT=""
+          export AGENT_AUTH_TOKEN=""
+
+          # Start MCP server
+          MCP_PORT=8004 python3 -m uvicorn mcp_server:app --host 127.0.0.1 --port 8004 &
+          # Start guardrails
+          GUARDRAILS_PORT=8005 python3 -m uvicorn guardrails:app --host 127.0.0.1 --port 8005 &
+          export MCP_SERVER_URL="http://127.0.0.1:8004"
+          export GUARDRAILS_URL="http://127.0.0.1:8005"
+
+          # Start agents
+          AGENT_NAME=research AGENT_SKILLS=investigate,summarize AGENT_PORT=8001 \
+            python3 -m uvicorn agent:app --host 127.0.0.1 --port 8001 &
+          AGENT_NAME=analyst AGENT_SKILLS=analyze,recommend AGENT_PORT=8002 \
+            python3 -m uvicorn agent:app --host 127.0.0.1 --port 8002 &
+          AGENT_NAME=executor AGENT_SKILLS=execute,report AGENT_PORT=8003 \
+            python3 -m uvicorn agent:app --host 127.0.0.1 --port 8003 &
+
+          # Wait for agents
+          for port in 8001 8002 8003 8004 8005; do
+            for i in $(seq 1 30); do
+              curl -sf "http://127.0.0.1:$port/health" >/dev/null 2>&1 && break
+              sleep 1
+            done
+          done
+
+          # Start orchestrator
+          cd ..
+          cd src
+          export AGENT_URLS="http://127.0.0.1:8001,http://127.0.0.1:8002,http://127.0.0.1:8003"
+          python3 -m uvicorn orchestrator:app --host 127.0.0.1 --port 8000 &
+          for i in $(seq 1 30); do
+            curl -sf "http://127.0.0.1:8000/health" >/dev/null 2>&1 && break
+            sleep 1
+          done
+      - name: Run integration tests
+        run: make test-integration
+      - name: Run benchmark tests
+        run: make test-benchmarks
+
+  # ── Lint ─────────────────────────────────────────────────────────
+  python-lint:
+    name: Lint (Python)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -41,17 +155,11 @@ jobs:
         with:
           python-version: "3.11"
       - run: pip install ruff
-      - run: ruff check src/ tests/ || true
+      - name: Ruff check (errors only)
+        run: ruff check src/ tests/ --select F401,F841,E999
 
-  helm-lint:
-    name: Helm Lint
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: azure/setup-helm@v4
-      - run: helm lint chart/
-
-  readme-check:
+  # ── Stage 5: Publication ─────────────────────────────────────────
+  publication:
     name: "Stage 5: Publication"
     runs-on: ubuntu-latest
     steps:
@@ -59,16 +167,35 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
-      - run: pip install pytest
+      - run: pip install pytest pyyaml
       - run: make test-publication
 
-  container-build:
-    name: Container Build
+  # ── Summary gate ─────────────────────────────────────────────────
+  all-green:
+    name: All checks passed
     runs-on: ubuntu-latest
+    needs: [contracts, unit, integration, container-build, helm-lint, secrets-scan, python-lint, publication]
+    if: always()
     steps:
-      - uses: actions/checkout@v4
-      - run: |
-          for f in $(find src/ -name "Containerfile" -o -name "Dockerfile"); do
-            echo "Building $f (context: repo root)"
-            podman build -t test -f "$f" . || echo "WARN: $f build failed (may need specific base image)"
-          done
+      - name: Check all jobs
+        run: |
+          echo "contracts:      ${{ needs.contracts.result }}"
+          echo "unit:           ${{ needs.unit.result }}"
+          echo "integration:    ${{ needs.integration.result }}"
+          echo "container-build: ${{ needs.container-build.result }}"
+          echo "helm-lint:      ${{ needs.helm-lint.result }}"
+          echo "secrets-scan:   ${{ needs.secrets-scan.result }}"
+          echo "python-lint:    ${{ needs.python-lint.result }}"
+          echo "publication:    ${{ needs.publication.result }}"
+          if [[ "${{ needs.contracts.result }}" != "success" ]] || \
+             [[ "${{ needs.unit.result }}" != "success" ]] || \
+             [[ "${{ needs.integration.result }}" != "success" ]] || \
+             [[ "${{ needs.container-build.result }}" != "success" ]] || \
+             [[ "${{ needs.helm-lint.result }}" != "success" ]] || \
+             [[ "${{ needs.secrets-scan.result }}" != "success" ]] || \
+             [[ "${{ needs.python-lint.result }}" != "success" ]] || \
+             [[ "${{ needs.publication.result }}" != "success" ]]; then
+            echo "::error::One or more checks failed"
+            exit 1
+          fi
+          echo "All checks passed"
