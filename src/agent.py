@@ -210,13 +210,16 @@ def _demo_response(text: str) -> str:
     )
 
 
-async def _llm_response(text: str, model_name: str = "") -> str:
+async def _llm_response(
+    text: str, model_name: str = "", endpoint: str = ""
+) -> str:
     """Call the LLM via the OpenAI-compatible endpoint and return its reply."""
     use_model = model_name or MODEL_NAME
+    use_endpoint = endpoint or MODEL_ENDPOINT
     try:
         async with httpx.AsyncClient(timeout=60.0) as client:
             resp = await client.post(
-                f"{MODEL_ENDPOINT}/chat/completions",
+                f"{use_endpoint}/chat/completions",
                 json={
                     "model": use_model,
                     "messages": [
@@ -374,6 +377,7 @@ async def a2a_endpoint(request: models.JsonRpcRequest):
         params = request.params or {}
         task_id = params.get("id", str(uuid.uuid4()))
         model_override = params.get("model_override", "")
+        endpoint_override = params.get("endpoint_override", "")
         message = params.get("message", {})
         parts = message.get("parts", [])
         text = parts[0].get("text", "") if parts else ""
@@ -392,8 +396,10 @@ async def a2a_endpoint(request: models.JsonRpcRequest):
             tool_context = await _call_mcp_tools(text)
             enriched_text = f"{text}\n\nTool results:\n{tool_context}" if tool_context else text
 
-            if MODEL_ENDPOINT and not DEMO_MODE:
-                response_text = await _llm_response(enriched_text, model_override)
+            if (endpoint_override or MODEL_ENDPOINT) and not DEMO_MODE:
+                response_text = await _llm_response(
+                    enriched_text, model_override, endpoint_override
+                )
             else:
                 response_text = _demo_response(text)
 
@@ -401,7 +407,18 @@ async def a2a_endpoint(request: models.JsonRpcRequest):
                 response_text = f"{response_text}\n\n[MCP tool data retrieved]\n{tool_context}"
 
             output_screen = await _screen_text(response_text, "output")
-            if output_screen.get("flags"):
+            if not output_screen.get("allowed", True):
+                flags_summary = ", ".join(
+                    f["type"] for f in output_screen.get("flags", [])
+                )
+                logger.warning(
+                    "Guardrails blocked output [%s]: %s", AGENT_NAME, flags_summary
+                )
+                response_text = (
+                    f"Response blocked by guardrails ({flags_summary}). "
+                    "No generated content was returned."
+                )
+            elif output_screen.get("flags"):
                 flags_summary = ", ".join(f["type"] for f in output_screen["flags"])
                 response_text += f"\n\n[Guardrails warning: {flags_summary} detected in output]"
 

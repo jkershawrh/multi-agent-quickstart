@@ -7,7 +7,7 @@ services:
       - "8000:8000"
     environment:
       - AGENT_URLS=http://research-agent:8001,http://analyst-agent:8002,http://executor-agent:8003
-      - SEMANTIC_ROUTER_ENDPOINT=llm-d-sc:50051
+      - SEMANTIC_ROUTER_ENDPOINT=${SEMANTIC_ROUTER_ENDPOINT:-}
       - MODEL_SIMPLE=qwen2.5:0.5b
       - MODEL_COMPLEX=qwen2.5:1.5b
       - AGENT_AUTH_TOKEN=${AGENT_AUTH_TOKEN:-}
@@ -27,8 +27,6 @@ services:
         condition: service_healthy
       ollama-pull:
         condition: service_completed_successfully
-      llm-d-sc:
-        condition: service_healthy
 
   ollama:
     image: ollama/ollama
@@ -162,6 +160,7 @@ services:
         condition: service_completed_successfully
 
   model-fetch:
+    profiles: ["semantic-routing"]
     image: registry.access.redhat.com/ubi9/python-311:latest
     volumes:
       - sc_models:/models
@@ -193,9 +192,8 @@ services:
         "
 
   llm-d-sc:
-    build:
-      context: ../../../llm-d-semantic-classifier
-      dockerfile: Containerfile
+    profiles: ["semantic-routing"]
+    image: ${LLM_D_SC_IMAGE:-quay.io/rh-ai-quickstart/llm-d-sc:latest}
     ports:
       - "50051:50051"
     environment:

@@ -75,6 +75,8 @@ AGENT_URLS = os.environ.get(
 SEMANTIC_ROUTER_ENDPOINT = os.environ.get("SEMANTIC_ROUTER_ENDPOINT", "")
 
 MODEL_ENDPOINT = os.environ.get("MODEL_ENDPOINT", "")
+MODEL_ENDPOINT_SIMPLE = os.environ.get("MODEL_ENDPOINT_SIMPLE", MODEL_ENDPOINT)
+MODEL_ENDPOINT_COMPLEX = os.environ.get("MODEL_ENDPOINT_COMPLEX", MODEL_ENDPOINT)
 MODEL_NAME = os.environ.get("MODEL_NAME", "qwen2.5:1.5b")
 MODEL_SIMPLE = os.environ.get("MODEL_SIMPLE", "qwen2.5:0.5b")
 MODEL_COMPLEX = os.environ.get("MODEL_COMPLEX", "qwen2.5:1.5b")
@@ -124,7 +126,8 @@ class A2AClient:
             return None
 
     async def send_task(
-        self, agent_name: str, text: str, model_override: str = ""
+        self, agent_name: str, text: str, model_override: str = "",
+        endpoint_override: str = "",
     ) -> dict:
         """Send a tasks/send JSON-RPC request to a discovered agent."""
         agent = self.agents.get(agent_name)
@@ -142,6 +145,8 @@ class A2AClient:
         }
         if model_override:
             params["model_override"] = model_override
+        if endpoint_override:
+            params["endpoint_override"] = endpoint_override
 
         rpc_request = {
             "jsonrpc": "2.0",
@@ -360,6 +365,7 @@ async def _execute_workflow_inner(
 ) -> models.WorkflowResponse:
     classification = None
     model_override = ""
+    endpoint_override = ""
 
     _wf_span = tracer.start_span("workflow", attributes={"workflow.type_requested": workflow_type}) if tracer else None
     try:
@@ -380,8 +386,10 @@ async def _execute_workflow_inner(
                 model_tier = classification.selected_model
                 if model_tier == "simple":
                     model_override = MODEL_SIMPLE
+                    endpoint_override = MODEL_ENDPOINT_SIMPLE
                 else:
                     model_override = MODEL_COMPLEX
+                    endpoint_override = MODEL_ENDPOINT_COMPLEX
                 logger.info(
                     "Semantic routing: %s -> %s, model=%s (top signal: %s %.3f)",
                     workflow_type,
@@ -419,7 +427,9 @@ async def _execute_workflow_inner(
 
             try:
                 task_text = f"[{action}] {context}"
-                result = await a2a_client.send_task(agent_name, task_text, model_override)
+                result = await a2a_client.send_task(
+                    agent_name, task_text, model_override, endpoint_override
+                )
             finally:
                 step_latency = round((time.monotonic() - step_start) * 1000, 2)
                 if _agent_span:

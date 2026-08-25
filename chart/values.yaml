@@ -16,6 +16,9 @@ model:
   name: "Qwen/Qwen2.5-1.5B-Instruct"
   simpleModel: "Qwen/Qwen2.5-0.5B-Instruct"
   complexModel: "Qwen/Qwen2.5-1.5B-Instruct"
+  # KServe downloads these Hugging Face repositories into /mnt/models.
+  simpleStorageUri: "hf://Qwen/Qwen2.5-0.5B-Instruct"
+  complexStorageUri: "hf://Qwen/Qwen2.5-1.5B-Instruct"
   image: quay.io/modh/vllm:rhoai-2.20
   resources:
     requests:
@@ -37,6 +40,10 @@ orchestrator:
     limits:
       cpu: "2"
       memory: "512Mi"
+
+observability:
+  # Optional OTLP/gRPC collector endpoint, for example http://jaeger-collector:4317
+  otlpEndpoint: ""
 
 # Agent configurations -- each runs on a dedicated Intel Xeon core
 agents:
@@ -98,6 +105,20 @@ mcpServer:
       cpu: "500m"
       memory: "256Mi"
 
+# Demonstration guardrails. This regex service is educational, not a
+# replacement for TrustyAI Guardrails Orchestrator or another policy service.
+guardrails:
+  enabled: true
+  image: quay.io/rh-ai-quickstart/multi-agent-quickstart:latest
+  port: 8005
+  resources:
+    requests:
+      cpu: "100m"
+      memory: "128Mi"
+    limits:
+      cpu: "500m"
+      memory: "256Mi"
+
 # Agent authentication
 auth:
   enabled: false
@@ -105,13 +126,13 @@ auth:
 
 # Semantic routing (llm-d-sc) -- classifies query complexity to select workflow
 semanticRouter:
-  enabled: true
+  # Disabled by default because the classifier image/model artifacts are
+  # published independently. Enable after setting usable image references.
+  enabled: false
   image: quay.io/rh-ai-quickstart/llm-d-sc:latest
   modelImage: quay.io/rh-ai-quickstart/llm-d-sc-modelcar:latest
   grpcPort: 50051
   classifier: complexity
-  modelSimple: "qwen2.5:0.5b"
-  modelComplex: "qwen2.5:1.5b"
   resources:
     requests:
       cpu: "1"

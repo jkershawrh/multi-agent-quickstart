@@ -140,7 +140,7 @@ flowchart LR
 
 ![Architecture diagram for multi-agent-quickstart](docs/images/architecture.png)
 
-The entire stack runs on Intel Xeon processors. Multi-agent workloads benefit from Xeon's core isolation -- each agent is pinned to a dedicated core so inference on one agent does not contend with another, giving predictable per-request latency. The llm-d-sc classifier uses the Candle inference runtime (Rust + BERT), which leverages Xeon's AVX-512 vector extensions for fast embedding computation without a GPU. Ollama serves both Qwen models on CPU, taking advantage of Xeon's large memory bandwidth and cache hierarchy for quantized LLM inference.
+The local track runs on CPU and is suitable for Intel Xeon systems. The Helm chart assigns CPU requests and limits to each agent so Kubernetes can schedule and bound their compute; it does not pin pods to physical cores. The optional llm-d-sc classifier uses the Candle inference runtime, while Ollama serves the two small Qwen demo models on CPU.
 
 > **Note on model quality:** The bundled `qwen2.5:0.5b` and `qwen2.5:1.5b` models are sized for CPU demo and fast iteration. For production quality, deploy larger models (8B+) via the Red Hat AI Inference Server (vLLM). See [Track 3: Step 4](#step-4-experiment-with-models).
 
@@ -164,17 +164,17 @@ This quickstart can be deployed by a regular user with namespace-level permissio
 
 | | Track 1: Local | Track 2: OpenShift | Track 3: Advanced |
 |---|---|---|---|
-| **Goal** | Learn the patterns | Deploy production-like | Align with the blueprint |
+| **Goal** | Learn the patterns | Exercise the OpenShift path | Explore blueprint integrations |
 | **Time** | 15 minutes | 30 minutes | 60 minutes |
 | **Requires** | Python 3.9+, Ollama | OpenShift 4.14+, Helm | Completed Track 1 or 2 |
 | **Models** | Ollama (CPU) | vLLM / Red Hat AI Inference Server | Any |
-| **Semantic routing** | LLM fallback | llm-d-sc (sub-20ms) | llm-d-sc |
+| **Semantic routing** | LLM fallback | Optional llm-d-sc | llm-d-sc integration |
 | **Sandboxing** | Process-level | Pod SecurityContext | OpenShell (documented) |
-| **Auth** | Optional shared token | K8s Secrets | SPIFFE via Kagenti |
+| **Auth** | Optional shared token | K8s Secrets | SPIFFE/SPIRE integration path |
 | **Tracing** | Console exporter | OTLP to Jaeger/Tempo | Configured + explored |
 | **Guardrails** | Running | Running | Tested + understood |
 
-Start with **Track 1** to learn the patterns. Move to **Track 2** to deploy on OpenShift. Complete **Track 3** to align with the Red Hat AI Agent Blueprint and prepare for production.
+Start with **Track 1** to learn the patterns. Move to **Track 2** to deploy on OpenShift. Use **Track 3** to explore the Red Hat AI Agent Blueprint. This repository is an educational quickstart, not a production-ready agent platform.
 
 ---
 
@@ -197,6 +197,8 @@ cd multi-agent-quickstart
 ```
 
 One command starts 7 services: orchestrator, 3 A2A agents, MCP tool server, guardrails service, and Gradio UI. If Ollama is installed, it pulls `qwen2.5:0.5b` and `qwen2.5:1.5b` automatically. Without Ollama, the system starts in demo mode with simulated responses.
+
+Podman users can alternatively validate and start `docker-compose.yml` with `podman compose`; install a Compose provider such as `podman-compose` if Podman reports that none is available. The optional `semantic-routing` profile also requires a published `LLM_D_SC_IMAGE` and model artifacts, so `./demo.sh` remains the shortest standalone path.
 
 You should see:
 
@@ -375,7 +377,7 @@ Stop the stack with `Ctrl+C`.
 | **External MaaS endpoint** | Existing model service or cloud API | `--set model.endpoint=https://...` |
 | **Demo mode** | No model backend, simulated responses | Default (no model config needed) |
 
-> **Recommended for production:** Use the Red Hat AI Inference Server (vLLM) for GPU-accelerated serving with KV-cache-aware routing via llm-d.
+> **OpenShift AI path:** Use the Red Hat AI Inference Server (vLLM) for accelerated model serving. llm-d replica scheduling is a separate production extension and is not installed by this chart.
 
 ### Step 2: Deploy with Helm
 
@@ -390,7 +392,10 @@ helm install multi-agent-quickstart chart/
 # Or with vLLM model serving (requires GPU node)
 helm install multi-agent-quickstart chart/ \
   --set model.deploy=true \
-  --set model.name="Qwen/Qwen2.5-7B-Instruct"
+  --set model.simpleModel="Qwen/Qwen2.5-0.5B-Instruct" \
+  --set model.simpleStorageUri="hf://Qwen/Qwen2.5-0.5B-Instruct" \
+  --set model.complexModel="Qwen/Qwen2.5-1.5B-Instruct" \
+  --set model.complexStorageUri="hf://Qwen/Qwen2.5-1.5B-Instruct"
 
 # Or with an external model endpoint
 helm install multi-agent-quickstart chart/ \
@@ -424,6 +429,8 @@ oc create secret generic agent-auth-token --from-literal=token=my-secret-token
 
 # Upgrade with auth enabled
 helm upgrade multi-agent-quickstart chart/ --set auth.enabled=true
+
+export AGENT_AUTH_TOKEN=my-secret-token
 ```
 
 Health endpoints and agent card discovery remain unauthenticated (needed for K8s probes and A2A protocol compliance). Only `/a2a` task calls require the bearer token.
@@ -435,12 +442,14 @@ Run the same exploration from Track 1, but against the OpenShift route:
 ```bash
 # Simple query
 curl -s -X POST "$ROUTE_URL/api/v1/workflow" \
+  -H "Authorization: Bearer $AGENT_AUTH_TOKEN" \
   -H "Content-Type: application/json" \
   -d '{"query": "Create a task to review the deployment", "workflow_type": "lightweight"}' \
   | python3 -m json.tool
 
 # Complex query with auto-routing
 curl -s -X POST "$ROUTE_URL/api/v1/workflow" \
+  -H "Authorization: Bearer $AGENT_AUTH_TOKEN" \
   -H "Content-Type: application/json" \
   -d '{"query": "Investigate the API error spike, analyze root cause, and fix it"}' \
   | python3 -m json.tool
@@ -451,11 +460,11 @@ curl -s -X POST "$ROUTE_URL/api/v1/workflow" \
 Features that Track 1 doesn't provide:
 
 - **Sandboxed agents** -- each pod runs with `readOnlyRootFilesystem`, dropped capabilities, and non-root user via SecurityContext
-- **llm-d-sc semantic routing** -- the Rust classifier runs as a containerized service (sub-20ms on CPU), replacing the LLM fallback
-- **vLLM model serving** -- GPU-accelerated inference via the Red Hat AI Inference Server with KV-cache-aware routing
+- **Optional llm-d-sc semantic routing** -- enable it after supplying published classifier and ModelCar images; otherwise the orchestrator uses its documented fallback
+- **Two vLLM model services** -- simple and complex model tiers via Red Hat AI Inference Server/KServe
 - **Secret-based auth** -- bearer tokens injected via K8s Secrets, not environment variables
 - **Health probes** -- liveness and readiness probes on every service for automatic restart and traffic management
-- **Intel Xeon core pinning** -- CPU requests/limits per agent (1 core per agent) ensure dedicated compute
+- **CPU resource boundaries** -- requests and limits give each agent predictable Kubernetes scheduling constraints
 
 ### Delete
 
@@ -477,17 +486,18 @@ oc delete project multi-agent-quickstart
 
 ### Step 1: Deploy with Kagenti
 
-This quickstart ships Kagenti (rossoctl) Agent CRD manifests under `deploy/kagenti/`. On a cluster with the Kagenti operator installed, agents are deployed as first-class Kubernetes resources with SPIFFE identity:
+This quickstart ships Kagenti (rossoctl) Agent CRD manifests under `deploy/kagenti/`. On a cluster with the Kagenti operator installed, agents can be deployed as first-class Kubernetes resources. The included service accounts are identity anchors; SPIFFE/SPIRE issuance still requires cluster-side identity configuration:
 
 ```bash
 # Apply the Agent CRDs (requires Kagenti operator)
+oc apply -f deploy/kagenti/serviceaccounts.yaml
 oc apply -f deploy/kagenti/mcp-server.yaml
 oc apply -f deploy/kagenti/research-agent.yaml
 oc apply -f deploy/kagenti/analyst-agent.yaml
 oc apply -f deploy/kagenti/executor-agent.yaml
 ```
 
-**What Kagenti adds over Helm:** SPIFFE-based workload identity (automatic credential rotation), AgentCard CRD discovery (agents register with the cluster control plane), and a UI for monitoring agent health and lifecycle.
+**What this track demonstrates:** Kagenti Agent CRDs, service-account-scoped workloads, and agent lifecycle management. SPIFFE-based workload identity and automatic credential rotation are an advanced cluster integration, not enabled by these manifests alone.
 
 ### Step 2: Enable OpenTelemetry tracing
 
@@ -499,7 +509,7 @@ OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4317 ./demo.sh
 
 # OpenShift (add to Helm values)
 helm upgrade multi-agent-quickstart chart/ \
-  --set orchestrator.env.OTEL_EXPORTER_OTLP_ENDPOINT=http://jaeger-collector:4317
+  --set observability.otlpEndpoint=http://jaeger-collector:4317
 ```
 
 Each workflow creates a root `workflow` span with child spans for:
@@ -527,7 +537,7 @@ curl -s -X POST http://localhost:8005/screen \
   -d '{"text": "How to hack into the database", "direction": "input"}'
 ```
 
-**Production upgrade:** Replace `src/guardrails.py` with [TrustyAI Guardrails Orchestrator](https://github.com/trustyai-explainability) for ML-based screening with NLI models. The agent integration (screen before LLM call, screen after response) works unchanged.
+The stub fails open if its service is unavailable so the lab remains runnable; production deployments should choose and enforce an explicit failure policy. **Production upgrade:** Replace `src/guardrails.py` with [TrustyAI Guardrails Orchestrator](https://github.com/trustyai-explainability) for policy-backed screening. The input/output integration points remain the same.
 
 ### Step 4: Experiment with models
 
@@ -547,9 +557,10 @@ On OpenShift with vLLM:
 ```bash
 helm upgrade multi-agent-quickstart chart/ \
   --set model.deploy=true \
-  --set model.name="meta-llama/Llama-3.1-8B-Instruct" \
   --set model.simpleModel="Qwen/Qwen2.5-1.5B-Instruct" \
-  --set model.complexModel="meta-llama/Llama-3.1-8B-Instruct"
+  --set model.simpleStorageUri="hf://Qwen/Qwen2.5-1.5B-Instruct" \
+  --set model.complexModel="meta-llama/Llama-3.1-8B-Instruct" \
+  --set model.complexStorageUri="hf://meta-llama/Llama-3.1-8B-Instruct"
 ```
 
 > **Model quality:** The bundled 0.5b and 1.5b models demonstrate the routing pattern but produce limited-quality responses. For production, use 8B+ models via Red Hat AI Inference Server.
@@ -567,7 +578,7 @@ This quickstart implements the [Red Hat AI Agent Blueprint](https://developers.r
 | **Inference routing (Tier 3)** | Single model instance | llm-d Router / EPP | Not applicable locally |
 | **MCP tool calling** | MCP JSON-RPC tools | MCP (Agentic AI Foundation) | Implemented |
 | **Tool governance** | Bearer token auth on /a2a | MCP Gateway (Envoy + Kuadrant) | Partial |
-| **Workload identity** | Shared bearer token | SPIFFE/SPIRE via Kagenti | Local only |
+| **Workload identity** | Shared bearer token + dedicated service accounts | SPIFFE/SPIRE with Kagenti integration | Integration path |
 | **Inference guardrails** | PII + content + injection screening | TrustyAI Guardrails Orchestrator | Stub |
 | **Tracing** | OpenTelemetry spans | MLflow Tracing + OTel | Implemented |
 | **Agent lifecycle** | Helm chart + Kagenti Agent CRDs | Kagenti Agent CRD | Both provided |
@@ -577,8 +588,8 @@ This quickstart implements the [Red Hat AI Agent Blueprint](https://developers.r
 
 To move from this quickstart to production on the blueprint:
 
-1. **Replace Ollama with vLLM** behind the Red Hat AI Inference Server for GPU-accelerated serving with KV-cache-aware inference routing via llm-d.
-2. **Deploy Kagenti** for SPIFFE identity injection and AgentCard-based discovery instead of static `AGENT_URLS`.
+1. **Replace Ollama with vLLM** behind the Red Hat AI Inference Server; add llm-d/EPP separately when replica-aware scheduling is required.
+2. **Deploy Kagenti** for Agent CRD lifecycle, then configure SPIFFE/SPIRE identity issuance and AgentCard-based discovery for your cluster.
 3. **Add an MCP Gateway** (Envoy + Kuadrant/Authorino) in front of the MCP tool server for claims-based tool authorization.
 4. **Enable TrustyAI Guardrails** for ML-based input/output screening at the inference boundary.
 5. **Add OpenShell** for process-level sandboxing (seccomp, Landlock) inside each agent pod.

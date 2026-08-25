@@ -27,12 +27,16 @@ source "$VENV_DIR/bin/activate"
 pip install -q -r "$SRC_DIR/requirements.txt"
 
 # ── Ollama (optional) ───────────────────────────────────────────────
-MODEL_SIMPLE="qwen2.5:0.5b"
-MODEL_COMPLEX="qwen2.5:1.5b"
-MODEL_NAME="$MODEL_COMPLEX"
+MODEL_SIMPLE="${MODEL_SIMPLE:-qwen2.5:0.5b}"
+MODEL_COMPLEX="${MODEL_COMPLEX:-qwen2.5:1.5b}"
+MODEL_NAME="${MODEL_NAME:-$MODEL_COMPLEX}"
 USE_OLLAMA=false
+USE_EXTERNAL_MODEL=false
 
-if command -v ollama &>/dev/null; then
+if [ -n "${MODEL_ENDPOINT:-}" ]; then
+    USE_EXTERNAL_MODEL=true
+    echo "Using configured OpenAI-compatible endpoint: $MODEL_ENDPOINT"
+elif command -v ollama &>/dev/null; then
     echo "Ollama found — checking models..."
     MODELS_READY=true
     for model in "$MODEL_SIMPLE" "$MODEL_COMPLEX"; do
@@ -56,7 +60,11 @@ else
 fi
 
 # ── Environment ──────────────────────────────────────────────────────
-if $USE_OLLAMA; then
+if $USE_EXTERNAL_MODEL; then
+    export MODEL_ENDPOINT MODEL_NAME MODEL_SIMPLE MODEL_COMPLEX
+    export DEMO_MODE="false"
+    echo "Starting agents in LIVE mode (configured endpoint)..."
+elif $USE_OLLAMA; then
     export MODEL_ENDPOINT="http://localhost:11434/v1"
     export MODEL_NAME
     export MODEL_SIMPLE

@@ -790,3 +790,41 @@ class TestAgentAuth:
             assert resp.status_code == 200
         finally:
             auth.AGENT_AUTH_TOKEN = original_token
+
+
+class TestGuardrailEnforcement:
+
+    def test_blocked_output_is_not_returned(self, research_client, monkeypatch):
+        """A blocked output is replaced instead of leaking generated content."""
+        calls = 0
+
+        async def fake_screen(text, direction):
+            nonlocal calls
+            calls += 1
+            if direction == "output":
+                return {
+                    "allowed": False,
+                    "flags": [{"type": "harmful_content"}],
+                    "screened_text": text,
+                }
+            return {"allowed": True, "flags": [], "screened_text": text}
+
+        monkeypatch.setattr(agent, "_screen_text", fake_screen)
+        monkeypatch.setattr(agent, "_demo_response", lambda text: "SENSITIVE GENERATED TEXT")
+        monkeypatch.setattr(agent, "DEMO_MODE", True)
+
+        response = research_client.post("/a2a", json={
+            "jsonrpc": "2.0",
+            "id": "guardrail-output",
+            "method": "tasks/send",
+            "params": {
+                "id": "task-output",
+                "message": {"parts": [{"kind": "text", "text": "test"}]},
+            },
+        })
+
+        assert response.status_code == 200
+        body = response.text
+        assert calls == 2
+        assert "SENSITIVE GENERATED TEXT" not in body
+        assert "Response blocked by guardrails" in body

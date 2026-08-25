@@ -42,7 +42,7 @@ spec:
               value: {{ $agent.port | quote }}
             {{- if $.Values.model.deploy }}
             - name: MODEL_ENDPOINT
-              value: "http://{{ $.Release.Name }}-vllm:8000/v1"
+              value: "http://{{ $.Release.Name }}-vllm-complex-predictor:80/v1"
             {{- else if $.Values.model.endpoint }}
             - name: MODEL_ENDPOINT
               value: {{ $.Values.model.endpoint | quote }}
@@ -52,6 +52,10 @@ spec:
             {{- if $.Values.mcpServer.enabled }}
             - name: MCP_SERVER_URL
               value: "http://{{ $.Release.Name }}-mcp-server:{{ $.Values.mcpServer.port }}"
+            {{- end }}
+            {{- if $.Values.guardrails.enabled }}
+            - name: GUARDRAILS_URL
+              value: "http://{{ $.Release.Name }}-guardrails:{{ $.Values.guardrails.port }}"
             {{- end }}
             {{- if $.Values.auth.enabled }}
             - name: AGENT_AUTH_TOKEN

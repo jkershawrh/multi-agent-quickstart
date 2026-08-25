@@ -156,7 +156,7 @@ jobs:
           python-version: "3.11"
       - run: pip install ruff
       - name: Ruff check (errors only)
-        run: ruff check src/ tests/ --select F401,F841,E999
+        run: ruff check src/ tests/ --select F401,F841
 
   # ── Stage 5: Publication ─────────────────────────────────────────
   publication:

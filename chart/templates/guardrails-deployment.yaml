@@ -1,0 +1,55 @@
+{{- if .Values.guardrails.enabled }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ .Release.Name }}-guardrails
+  labels:
+    app.kubernetes.io/name: {{ .Release.Name }}-guardrails
+    app.kubernetes.io/component: demonstration-guardrails
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: {{ .Release.Name }}-guardrails
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: {{ .Release.Name }}-guardrails
+    spec:
+      securityContext:
+        runAsNonRoot: true
+      containers:
+        - name: guardrails
+          image: {{ .Values.guardrails.image }}
+          command: ["uvicorn", "guardrails:app", "--host", "0.0.0.0", "--port", "{{ .Values.guardrails.port }}"]
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+          ports:
+            - name: http
+              containerPort: {{ .Values.guardrails.port }}
+          resources:
+            {{- toYaml .Values.guardrails.resources | nindent 12 }}
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: http
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: http
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ .Release.Name }}-guardrails
+spec:
+  selector:
+    app.kubernetes.io/name: {{ .Release.Name }}-guardrails
+  ports:
+    - name: http
+      port: {{ .Values.guardrails.port }}
+      targetPort: http
+{{- end }}

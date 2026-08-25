@@ -1,13 +1,21 @@
 {{- if .Values.model.deploy }}
+{{- $models := list
+  (dict "tier" "simple" "name" .Values.model.simpleModel "storageUri" .Values.model.simpleStorageUri)
+  (dict "tier" "complex" "name" .Values.model.complexModel "storageUri" .Values.model.complexStorageUri)
+}}
+{{- range $index, $model := $models }}
+{{- if $index }}
+---
+{{- end }}
 apiVersion: serving.kserve.io/v1alpha1
 kind: ServingRuntime
 metadata:
-  name: {{ .Release.Name }}-vllm
+  name: {{ $.Release.Name }}-vllm-{{ $model.tier }}
   labels:
-    app.kubernetes.io/name: {{ .Release.Name }}-vllm
     app.kubernetes.io/component: model-serving
+    app.kubernetes.io/part-of: {{ $.Release.Name }}
   annotations:
-    openshift.io/display-name: "vLLM Runtime ({{ .Values.model.name }})"
+    openshift.io/display-name: "vLLM {{ $model.tier }} model"
 spec:
   multiModel: false
   supportedModelFormats:
@@ -15,23 +23,25 @@ spec:
       autoSelect: true
   containers:
     - name: kserve-container
-      image: {{ .Values.model.image }}
+      image: {{ $.Values.model.image }}
+      args:
+        - --model=/mnt/models
+        - --served-model-name={{ $model.name }}
+        - --port=8080
       ports:
-        - containerPort: 8000
+        - name: http1
+          containerPort: 8080
           protocol: TCP
-      env:
-        - name: MODEL_NAME
-          value: {{ .Values.model.name | quote }}
       resources:
-        {{- toYaml .Values.model.resources | nindent 8 }}
+        {{- toYaml $.Values.model.resources | nindent 8 }}
 ---
 apiVersion: serving.kserve.io/v1beta1
 kind: InferenceService
 metadata:
-  name: {{ .Release.Name }}-vllm
+  name: {{ $.Release.Name }}-vllm-{{ $model.tier }}
   labels:
-    app.kubernetes.io/name: {{ .Release.Name }}-vllm
     app.kubernetes.io/component: model-serving
+    app.kubernetes.io/part-of: {{ $.Release.Name }}
   annotations:
     serving.kserve.io/deploymentMode: RawDeployment
 spec:
@@ -39,19 +49,9 @@ spec:
     model:
       modelFormat:
         name: vLLM
-      runtime: {{ .Release.Name }}-vllm
+      runtime: {{ $.Release.Name }}-vllm-{{ $model.tier }}
+      storageUri: {{ $model.storageUri | quote }}
       resources:
-        {{- toYaml .Values.model.resources | nindent 8 }}
----
-apiVersion: v1
-kind: Service
-metadata:
-  name: {{ .Release.Name }}-vllm
-spec:
-  selector:
-    app.kubernetes.io/name: {{ .Release.Name }}-vllm
-  ports:
-    - name: http
-      port: 8000
-      targetPort: 8000
+        {{- toYaml $.Values.model.resources | nindent 8 }}
+{{- end }}
 {{- end }}
