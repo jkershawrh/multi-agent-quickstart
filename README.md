@@ -367,6 +367,7 @@ Stop the stack with `Ctrl+C`.
 - Red Hat OpenShift 4.14+ or OpenShift AI 2.7+
 - Helm 3.12+
 - `oc` CLI 4.14+ logged into your cluster
+- A published application image accessible to the cluster. The example `quay.io/rh-ai-quickstart/...:latest` value is a placeholder until the project image is published; override all component image values when testing a fork.
 - Completed Track 1 (recommended, to understand the patterns)
 
 ### Step 1: Choose your model serving backend
@@ -386,11 +387,26 @@ git clone https://github.com/rh-ai-quickstart/multi-agent-quickstart.git
 cd multi-agent-quickstart
 oc new-project multi-agent-quickstart
 
+# Build and publish this fork to the OpenShift internal registry
+podman build -t multi-agent-quickstart:local -f src/Containerfile src/
+REGISTRY="$(oc registry info)"
+podman login -u "$(oc whoami)" -p "$(oc whoami -t)" "$REGISTRY"
+podman tag multi-agent-quickstart:local \
+  "$REGISTRY/multi-agent-quickstart/app:local"
+podman push "$REGISTRY/multi-agent-quickstart/app:local"
+
 # Demo mode (no GPU required)
-helm install multi-agent-quickstart chart/
+APP_IMAGE="image-registry.openshift-image-registry.svc:5000/multi-agent-quickstart/app:local"
+helm install multi-agent-quickstart chart/ \
+  --set orchestrator.image="$APP_IMAGE" \
+  --set agents.research.image="$APP_IMAGE" \
+  --set agents.analyst.image="$APP_IMAGE" \
+  --set agents.executor.image="$APP_IMAGE" \
+  --set mcpServer.image="$APP_IMAGE" \
+  --set guardrails.image="$APP_IMAGE"
 
 # Or with vLLM model serving (requires GPU node)
-helm install multi-agent-quickstart chart/ \
+helm upgrade multi-agent-quickstart chart/ --reuse-values \
   --set model.deploy=true \
   --set model.simpleModel="Qwen/Qwen2.5-0.5B-Instruct" \
   --set model.simpleStorageUri="hf://Qwen/Qwen2.5-0.5B-Instruct" \
@@ -398,7 +414,7 @@ helm install multi-agent-quickstart chart/ \
   --set model.complexStorageUri="hf://Qwen/Qwen2.5-1.5B-Instruct"
 
 # Or with an external model endpoint
-helm install multi-agent-quickstart chart/ \
+helm upgrade multi-agent-quickstart chart/ --reuse-values \
   --set model.endpoint=https://my-maas:443/v1 \
   --set model.name=my-model
 ```
@@ -428,7 +444,7 @@ curl -s "$ROUTE_URL/api/v1/agents" | python3 -m json.tool
 oc create secret generic agent-auth-token --from-literal=token=my-secret-token
 
 # Upgrade with auth enabled
-helm upgrade multi-agent-quickstart chart/ --set auth.enabled=true
+helm upgrade multi-agent-quickstart chart/ --reuse-values --set auth.enabled=true
 
 export AGENT_AUTH_TOKEN=my-secret-token
 ```

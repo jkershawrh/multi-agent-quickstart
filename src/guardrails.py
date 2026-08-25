@@ -33,7 +33,7 @@ PII_PATTERNS = {
 }
 
 INJECTION_PATTERNS = [
-    re.compile(r"ignore\s+(all\s+)?previous\s+instructions", re.IGNORECASE),
+    re.compile(r"ignore\s+(all\s+)?(previous\s+)?instructions", re.IGNORECASE),
     re.compile(r"system\s*prompt\s*:", re.IGNORECASE),
     re.compile(r"you\s+are\s+now\s+", re.IGNORECASE),
     re.compile(r"disregard\s+(all\s+)?(prior|above)", re.IGNORECASE),
