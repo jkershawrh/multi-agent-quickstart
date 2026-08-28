@@ -8,6 +8,7 @@ In production, replace the shared token with OpenShift service account
 tokens or mTLS between services.
 """
 
+import hmac
 import os
 
 from fastapi import Request
@@ -35,7 +36,8 @@ class TokenAuthMiddleware(BaseHTTPMiddleware):
             )
 
         token = auth[len("Bearer "):]
-        if token != AGENT_AUTH_TOKEN:
+        # Constant-time comparison to avoid leaking the token via timing.
+        if not hmac.compare_digest(token, AGENT_AUTH_TOKEN):
             return JSONResponse(
                 status_code=403,
                 content={"error": "Invalid token"},

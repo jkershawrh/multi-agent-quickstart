@@ -35,6 +35,19 @@ DEMO_MODE = os.environ.get("DEMO_MODE", "").lower() in ("true", "1", "yes")
 MCP_SERVER_URL = os.environ.get("MCP_SERVER_URL", "")
 GUARDRAILS_URL = os.environ.get("GUARDRAILS_URL", "")
 
+# Public URL advertised in this agent's A2A card. Defaults to localhost for the
+# local track; set to the in-cluster service URL when deployed.
+AGENT_PUBLIC_URL = os.environ.get("AGENT_PUBLIC_URL", f"http://localhost:{AGENT_PORT}")
+
+# LLM generation timeout (seconds). The orchestrator's per-agent timeout
+# (A2A_CLIENT_TIMEOUT) must be larger than this.
+AGENT_LLM_TIMEOUT = float(os.environ.get("AGENT_LLM_TIMEOUT", "60"))
+
+# Guardrails behaviour when the screening service is unreachable:
+# "open" (default) lets traffic through so the lab stays runnable;
+# "closed" blocks it. Production deployments should choose explicitly.
+GUARDRAILS_FAIL_MODE = os.environ.get("GUARDRAILS_FAIL_MODE", "open").lower()
+
 AI_DISCLAIMER = (
     "Agent responses are AI-generated -- verify "
     "recommendations with qualified professionals."
@@ -187,7 +200,7 @@ def _build_agent_card() -> models.AgentCard:
     return models.AgentCard(
         name=AGENT_NAME,
         description=config["description"],
-        url=f"http://localhost:{AGENT_PORT}",
+        url=AGENT_PUBLIC_URL,
         skills=config["skills"],
     )
 
@@ -217,7 +230,7 @@ async def _llm_response(
     use_model = model_name or MODEL_NAME
     use_endpoint = endpoint or MODEL_ENDPOINT
     try:
-        async with httpx.AsyncClient(timeout=60.0) as client:
+        async with httpx.AsyncClient(timeout=AGENT_LLM_TIMEOUT) as client:
             resp = await client.post(
                 f"{use_endpoint}/chat/completions",
                 json={
@@ -248,9 +261,27 @@ async def _llm_response(
 # ---------------------------------------------------------------------------
 
 
+def _guardrails_unavailable_result(text: str, reason: str) -> dict:
+    """Result used when the guardrails service is configured but unreachable.
+
+    Honours GUARDRAILS_FAIL_MODE: "closed" blocks the request, "open" (default)
+    lets it through so the lab stays runnable.
+    """
+    if GUARDRAILS_FAIL_MODE == "closed":
+        logger.warning("Guardrails %s -- failing CLOSED (blocking)", reason)
+        return {
+            "allowed": False,
+            "flags": [{"type": "guardrails_unavailable", "action": "blocked"}],
+            "screened_text": text,
+        }
+    logger.warning("Guardrails %s -- failing OPEN (allowing through)", reason)
+    return {"allowed": True, "flags": [], "screened_text": text}
+
+
 async def _screen_text(text: str, direction: str) -> dict:
-    """Screen text through the guardrails service. Returns screening result or None."""
+    """Screen text through the guardrails service. Returns a screening result."""
     if not GUARDRAILS_URL:
+        # Guardrails deliberately not configured -- not a failure.
         return {"allowed": True, "flags": [], "screened_text": text}
     try:
         async with httpx.AsyncClient(timeout=5.0) as client:
@@ -260,9 +291,9 @@ async def _screen_text(text: str, direction: str) -> dict:
             )
             if resp.status_code == 200:
                 return resp.json()
+        return _guardrails_unavailable_result(text, f"returned HTTP {resp.status_code}")
     except Exception as e:
-        logger.warning("Guardrails screening failed (%s), allowing through", e)
-    return {"allowed": True, "flags": [], "screened_text": text}
+        return _guardrails_unavailable_result(text, f"request failed ({e})")
 
 
 # ---------------------------------------------------------------------------

@@ -79,7 +79,7 @@ By the end of this quickstart, you will have:
 
 #### Key agentic AI patterns you'll learn
 
-Throughout this quickstart, you'll gain hands-on experience with the core patterns from the [Red Hat AI Agent Blueprint](https://developers.redhat.com/articles/2025/07/20/architect-open-blueprint-cloud-native-ai-agents):
+Throughout this quickstart, you'll gain hands-on experience with the core patterns from the [Red Hat AI Agent Blueprint](https://developers.redhat.com/articles/2026/07/20/architect-open-blueprint-cloud-native-ai-agents):
 
 | Pattern | What you'll see |
 |---|---|
@@ -498,7 +498,7 @@ oc delete project multi-agent-quickstart
 ### Prerequisites
 
 - Completed Track 1 or Track 2
-- Familiarity with the [Red Hat AI Agent Blueprint](https://developers.redhat.com/articles/2025/07/20/architect-open-blueprint-cloud-native-ai-agents)
+- Familiarity with the [Red Hat AI Agent Blueprint](https://developers.redhat.com/articles/2026/07/20/architect-open-blueprint-cloud-native-ai-agents)
 
 ### Step 1: Deploy with Kagenti
 
@@ -583,7 +583,7 @@ helm upgrade multi-agent-quickstart chart/ \
 
 ### Blueprint alignment
 
-This quickstart implements the [Red Hat AI Agent Blueprint](https://developers.redhat.com/articles/2025/07/20/architect-open-blueprint-cloud-native-ai-agents). The table below maps each blueprint component to what this quickstart provides and the Red Hat initiative that fills the role at production scale.
+This quickstart implements the [Red Hat AI Agent Blueprint](https://developers.redhat.com/articles/2026/07/20/architect-open-blueprint-cloud-native-ai-agents). The table below maps each blueprint component to what this quickstart provides and the Red Hat initiative that fills the role at production scale.
 
 | Blueprint Component | This Quickstart | Red Hat Initiative | Status |
 |---|---|---|---|
@@ -700,7 +700,7 @@ AGENT_CONFIGS = {
 │   ├── classify_pb2_grpc.py  # Generated gRPC client (llm-d-sc)
 │   ├── Containerfile         # Container image definition
 │   └── requirements.txt      # Python dependencies
-├── tests/                    # CDD -> TDD -> EDD validation (84 tests)
+├── tests/                    # CDD -> TDD -> EDD validation (86 tests)
 ├── docker-compose.yml        # Local dev stack
 ├── demo.sh                   # One-command launcher
 ├── Makefile                  # Test targets: make test-all
@@ -710,7 +710,7 @@ AGENT_CONFIGS = {
 
 ## References
 
-- [Red Hat AI Agent Blueprint](https://developers.redhat.com/articles/2025/07/20/architect-open-blueprint-cloud-native-ai-agents) -- Open architecture for cloud-native AI agents on Red Hat AI.
+- [Red Hat AI Agent Blueprint](https://developers.redhat.com/articles/2026/07/20/architect-open-blueprint-cloud-native-ai-agents) -- Open architecture for cloud-native AI agents on Red Hat AI.
 - [A2A Protocol Specification](https://google.github.io/A2A/) -- Open protocol for agent-to-agent discovery, delegation, and task management.
 - [llm-d-sc Semantic Classifier](https://github.com/llm-d-incubation/llm-d-semantic-classifier) -- Low-latency Rust service for semantic classification of inference requests.
 - [Model Context Protocol (MCP)](https://modelcontextprotocol.io/) -- Open protocol for connecting AI models to external tools and data sources.

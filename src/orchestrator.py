@@ -74,12 +74,21 @@ AGENT_URLS = os.environ.get(
 
 SEMANTIC_ROUTER_ENDPOINT = os.environ.get("SEMANTIC_ROUTER_ENDPOINT", "")
 
+# Public URL advertised in this service's own A2A agent card. Defaults to
+# localhost for the local track; set to the in-cluster/route URL in deploys.
+ORCHESTRATOR_PUBLIC_URL = os.environ.get("ORCHESTRATOR_PUBLIC_URL", "http://localhost:8000")
+
 MODEL_ENDPOINT = os.environ.get("MODEL_ENDPOINT", "")
 MODEL_ENDPOINT_SIMPLE = os.environ.get("MODEL_ENDPOINT_SIMPLE", MODEL_ENDPOINT)
 MODEL_ENDPOINT_COMPLEX = os.environ.get("MODEL_ENDPOINT_COMPLEX", MODEL_ENDPOINT)
 MODEL_NAME = os.environ.get("MODEL_NAME", "qwen2.5:1.5b")
 MODEL_SIMPLE = os.environ.get("MODEL_SIMPLE", "qwen2.5:0.5b")
 MODEL_COMPLEX = os.environ.get("MODEL_COMPLEX", "qwen2.5:1.5b")
+
+# Per-agent request timeout. Must exceed the agent's own LLM timeout
+# (AGENT_LLM_TIMEOUT, default 60s) so slow CPU generations are not cut
+# off mid-flight and reported as errors. Configurable for larger models.
+A2A_CLIENT_TIMEOUT = float(os.environ.get("A2A_CLIENT_TIMEOUT", "120"))
 
 
 # ---------------------------------------------------------------------------
@@ -156,7 +165,7 @@ class A2AClient:
         }
 
         try:
-            async with httpx.AsyncClient(timeout=30) as client:
+            async with httpx.AsyncClient(timeout=A2A_CLIENT_TIMEOUT) as client:
                 resp = await client.post(
                     f"{agent.url}/a2a",
                     json=rpc_request,
@@ -282,13 +291,18 @@ class SemanticRouter:
     async def _classify_llm(self, text: str) -> Optional[models.ClassificationResult]:
         if not MODEL_ENDPOINT:
             return None
+        # Classify with the cheap/simple tier -- classification runs on every
+        # "auto" query, so using the complex model here would defeat the
+        # cost-optimization the router exists to provide.
+        classify_endpoint = MODEL_ENDPOINT_SIMPLE or MODEL_ENDPOINT
+        classify_model = MODEL_SIMPLE or MODEL_NAME
         start = time.monotonic()
         try:
             async with httpx.AsyncClient(timeout=15.0) as client:
                 resp = await client.post(
-                    f"{MODEL_ENDPOINT}/chat/completions",
+                    f"{classify_endpoint}/chat/completions",
                     json={
-                        "model": MODEL_NAME,
+                        "model": classify_model,
                         "messages": [
                             {"role": "user", "content": LLM_CLASSIFY_PROMPT.format(query=text[:500])},
                         ],
@@ -560,7 +574,7 @@ async def orchestrator_agent_card():
             "Multi-agent orchestrator -- discovers and coordinates "
             "A2A-compliant agents with semantic routing. Runs on Intel Xeon CPU."
         ),
-        url="http://localhost:8000",
+        url=ORCHESTRATOR_PUBLIC_URL,
         skills=[
             models.AgentSkill(
                 id="orchestrate-workflow",

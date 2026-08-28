@@ -225,8 +225,10 @@ else
 fi
 if $USE_SEMANTIC_ROUTER; then
     echo "  Routing: SEMANTIC (llm-d-sc complexity classifier)"
+elif $USE_OLLAMA || $USE_EXTERNAL_MODEL; then
+    echo "  Routing: SEMANTIC (llm-fallback -- LLM complexity classifier)"
 else
-    echo "  Routing: DEFAULT (comprehensive workflow)"
+    echo "  Routing: DEFAULT (comprehensive workflow -- no classifier in demo mode)"
 fi
 if [ -n "$AGENT_AUTH_TOKEN" ]; then
     echo "  Auth:    ENABLED (bearer token)"
