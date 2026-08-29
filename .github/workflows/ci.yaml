@@ -40,13 +40,19 @@ jobs:
             -e AGENT_NAME=research -e AGENT_SKILLS=investigate -e AGENT_PORT=8001 -e DEMO_MODE=true \
             -p 8001:8001 multi-agent-quickstart:test \
             uvicorn agent:app --host 0.0.0.0 --port 8001
-          for i in $(seq 1 30); do
-            if curl -sf http://localhost:8001/health > /tmp/agent-health.json; then
+          ready=false
+          for i in $(seq 1 60); do
+            if podman exec test-agent python3 -c \
+              "import json,urllib.request; d=json.load(urllib.request.urlopen('http://127.0.0.1:8001/health')); assert d['status']=='healthy', d"; then
+              ready=true
               break
             fi
             sleep 1
           done
-          python3 -c "import json; d=json.load(open('/tmp/agent-health.json')); assert d['status']=='healthy', d"
+          if [[ "$ready" != "true" ]]; then
+            podman logs test-agent
+            exit 1
+          fi
           podman stop test-agent
 
   helm-lint:
