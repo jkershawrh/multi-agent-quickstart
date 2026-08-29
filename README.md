@@ -140,9 +140,20 @@ flowchart LR
 
 ![Architecture diagram for multi-agent-quickstart](docs/images/architecture.png)
 
-The local track runs on CPU and is suitable for Intel Xeon systems. The Helm chart assigns CPU requests and limits to each agent so Kubernetes can schedule and bound their compute; it does not pin pods to physical cores. The optional llm-d-sc classifier uses the Candle inference runtime, while Ollama serves the two small Qwen demo models on CPU.
+The local track runs on CPU and is suitable for Intel Xeon systems. The Helm chart assigns CPU requests and limits to each agent so Kubernetes can schedule and bound their compute; it does not pin pods to physical cores. Ollama is retained only as a convenient local learning backend. On OpenShift, use an OpenAI-compatible endpoint served by Red Hat AI Inference Server (vLLM), or a MaaS endpoint backed by that runtime.
 
-> **Note on model quality:** The bundled `qwen2.5:0.5b` and `qwen2.5:1.5b` models are sized for CPU demo and fast iteration. For production quality, deploy larger models (8B+) via the Red Hat AI Inference Server (vLLM). See [Track 3: Step 4](#step-4-experiment-with-models).
+> **CPU model sizing:** Sub-2B models are useful for learning the protocol but can produce weak agent output. An instruction-tuned 3B/4B model is a practical starting point for validating this sequential workflow on CPU. Do not assume that a larger model is automatically better: an 8B CPU deployment can exceed the synchronous per-agent timeout. Measure quality and end-to-end latency on the target hardware before increasing model size.
+
+### Sequential CPU validation
+
+The workflow was functionally validated on an Intel Xeon OpenShift cluster with a quantized Granite 3B model and `AGENT_MAX_TOKENS=128`. This was a single-request acceptance run, not a concurrency or capacity test.
+
+- One-agent lightweight workflow: 9.3 seconds
+- Auto-routed research-to-executor workflow: 21.1 seconds
+- Three-agent workflow with MCP enrichment: 46.2 seconds
+- A2A discovery, role-specific outputs, response fields, AI disclaimer, MCP enrichment, and prompt-injection blocking: passed
+
+These measurements establish that the framework completes in adequate time for an interactive CPU lab on the tested cluster. They are observations, not portable performance guarantees. The validation deployment used llama.cpp for the Granite comparison; the supported OpenShift target remains the Red Hat AI Inference Server CPU image (`registry.redhat.io/rhaii/vllm-cpu-rhel9`). Re-run the acceptance matrix after moving the model to that runtime.
 
 ## Requirements
 
@@ -154,7 +165,7 @@ The local track runs on CPU and is suitable for Intel Xeon systems. The Helm cha
 ### Minimum software requirements
 
 - **Track 1 (local):** Python 3.9+, Ollama (optional -- demo mode works without it)
-- **Track 2 (OpenShift):** Red Hat OpenShift 4.14+ or OpenShift AI 2.7+, Helm 3.12+, `oc` CLI 4.14+
+- **Track 2 (OpenShift):** Red Hat OpenShift 4.22 and Red Hat OpenShift AI 3.latest, Helm 3.12+, matching `oc` CLI
 
 ### Required user permissions
 
@@ -167,7 +178,7 @@ This quickstart can be deployed by a regular user with namespace-level permissio
 | **Goal** | Learn the patterns | Exercise the OpenShift path | Explore blueprint integrations |
 | **Time** | 15 minutes | 30 minutes | 60 minutes |
 | **Requires** | Python 3.9+, Ollama | OpenShift 4.14+, Helm | Completed Track 1 or 2 |
-| **Models** | Ollama (CPU) | vLLM / Red Hat AI Inference Server | Any |
+| **Models** | Ollama (learning only) | Red Hat AI Inference Server or MaaS | Any OpenAI-compatible endpoint |
 | **Semantic routing** | LLM fallback | Optional llm-d-sc | llm-d-sc integration |
 | **Sandboxing** | Process-level | Pod SecurityContext | OpenShell (documented) |
 | **Auth** | Optional shared token | K8s Secrets | SPIFFE/SPIRE integration path |
@@ -364,7 +375,7 @@ Stop the stack with `Ctrl+C`.
 
 ### Prerequisites
 
-- Red Hat OpenShift 4.14+ or OpenShift AI 2.7+
+- Red Hat OpenShift 4.22 and Red Hat OpenShift AI 3.latest
 - Helm 3.12+
 - `oc` CLI 4.14+ logged into your cluster
 - A published application image accessible to the cluster. The example `quay.io/rh-ai-quickstart/...:latest` value is a placeholder until the project image is published; override all component image values when testing a fork.
@@ -374,11 +385,11 @@ Stop the stack with `Ctrl+C`.
 
 | Option | When to use | Configuration |
 |---|---|---|
-| **Red Hat AI Inference Server (vLLM)** | Production on OpenShift AI with GPU | `--set model.deploy=true` |
+| **Red Hat AI Inference Server (vLLM)** | Supported OpenShift AI serving path for CPU or GPU | `--set model.deploy=true` |
 | **External MaaS endpoint** | Existing model service or cloud API | `--set model.endpoint=https://...` |
 | **Demo mode** | No model backend, simulated responses | Default (no model config needed) |
 
-> **OpenShift AI path:** Use the Red Hat AI Inference Server (vLLM) for accelerated model serving. llm-d replica scheduling is a separate production extension and is not installed by this chart.
+> **OpenShift AI path:** Use the Red Hat AI Inference Server (vLLM) for model serving. For a CPU lab, begin with an instruction-tuned 3B/4B model and a bounded token budget. llm-d replica scheduling is a separate production extension and is not installed by this chart.
 
 ### Step 2: Deploy with Helm
 
@@ -405,7 +416,7 @@ helm install multi-agent-quickstart chart/ \
   --set mcpServer.image="$APP_IMAGE" \
   --set guardrails.image="$APP_IMAGE"
 
-# Or with vLLM model serving (requires GPU node)
+# Or with Red Hat AI Inference Server model serving
 helm upgrade multi-agent-quickstart chart/ --reuse-values \
   --set model.deploy=true \
   --set model.simpleModel="Qwen/Qwen2.5-0.5B-Instruct" \
@@ -560,7 +571,7 @@ The stub fails open if its service is unavailable so the lab remains runnable; p
 The quickstart supports any OpenAI-compatible model endpoint:
 
 ```bash
-# Local: use a larger model (better quality, slower on CPU)
+# Local learning backend: compare a larger model (slower on CPU)
 ollama pull qwen2.5:7b
 MODEL_NAME=qwen2.5:7b MODEL_SIMPLE=qwen2.5:1.5b MODEL_COMPLEX=qwen2.5:7b ./demo.sh
 
@@ -568,37 +579,37 @@ MODEL_NAME=qwen2.5:7b MODEL_SIMPLE=qwen2.5:1.5b MODEL_COMPLEX=qwen2.5:7b ./demo.
 MODEL_ENDPOINT=https://my-maas:443/v1 MODEL_NAME=my-model ./demo.sh
 ```
 
-On OpenShift with vLLM:
+On OpenShift with Red Hat AI Inference Server, start with a CPU-appropriate 3B/4B instruction model available to your organization. The identifiers below are examples and must match an accessible model repository:
 
 ```bash
 helm upgrade multi-agent-quickstart chart/ \
   --set model.deploy=true \
-  --set model.simpleModel="Qwen/Qwen2.5-1.5B-Instruct" \
-  --set model.simpleStorageUri="hf://Qwen/Qwen2.5-1.5B-Instruct" \
-  --set model.complexModel="meta-llama/Llama-3.1-8B-Instruct" \
-  --set model.complexStorageUri="hf://meta-llama/Llama-3.1-8B-Instruct"
+  --set model.simpleModel="ibm-granite/granite-3.3-2b-instruct" \
+  --set model.simpleStorageUri="hf://ibm-granite/granite-3.3-2b-instruct" \
+  --set model.complexModel="ibm-granite/granite-3.2-4b-instruct" \
+  --set model.complexStorageUri="hf://ibm-granite/granite-3.2-4b-instruct"
 ```
 
-> **Model quality:** The bundled 0.5b and 1.5b models demonstrate the routing pattern but produce limited-quality responses. For production, use 8B+ models via Red Hat AI Inference Server.
+> **Model quality and latency:** The bundled sub-2B models demonstrate routing but produce limited-quality responses. Use the smallest model that satisfies the workflow-output rubric. Validate 3B/4B first on CPU; move to 8B only after measuring the target hardware and adjusting token and request timeouts.
 
 ### Blueprint alignment
 
-This quickstart implements the [Red Hat AI Agent Blueprint](https://developers.redhat.com/articles/2026/07/20/architect-open-blueprint-cloud-native-ai-agents). The table below maps each blueprint component to what this quickstart provides and the Red Hat initiative that fills the role at production scale.
+This quickstart is a learning implementation mapped to the [open blueprint for cloud-native AI agents](https://developers.redhat.com/articles/2026/07/20/architect-open-blueprint-cloud-native-ai-agents). It demonstrates the interfaces and request flow, but it is not yet a complete deployment of every governance and isolation layer in that blueprint. The table below separates implemented behavior from production-target integrations.
 
 | Blueprint Component | This Quickstart | Red Hat Initiative | Status |
 |---|---|---|---|
-| **Agent orchestration (A2A)** | A2A agent cards + JSON-RPC | Kagenti (rossoctl) | Implemented |
-| **Sandbox runtime** | SecurityContext (runAsNonRoot, drop ALL) | OpenShell | Pod-level (process-level planned) |
+| **Agent orchestration (A2A)** | A2A agent cards + JSON-RPC | Signed AgentCards / lifecycle tooling | Protocol flow implemented; cards are not signed |
+| **Sandbox runtime** | SecurityContext (runAsNonRoot, drop ALL) | OpenShell + agent-sandbox; optional Kata | Pod hardening only |
 | **Harness** | Custom FastAPI loop | OpenClaw / LangGraph / custom | Implemented |
 | **Semantic routing (Tier 2)** | llm-d-sc + LLM fallback | vLLM Semantic Router / llm-d-sc | Implemented |
-| **Inference routing (Tier 3)** | Single model instance | llm-d Router / EPP | Not applicable locally |
+| **Inference routing (Tier 3)** | Single model endpoint | llm-d Router / EPP | Not implemented |
 | **MCP tool calling** | MCP JSON-RPC tools | MCP (Agentic AI Foundation) | Implemented |
-| **Tool governance** | Bearer token auth on /a2a | MCP Gateway (Envoy + Kuadrant) | Partial |
-| **Workload identity** | Shared bearer token + dedicated service accounts | SPIFFE/SPIRE with Kagenti integration | Integration path |
+| **Tool governance** | Direct MCP calls; bearer token protects A2A only | MCP Gateway (Envoy + Kuadrant/Authorino) | Not implemented |
+| **Workload identity** | Shared bearer token + dedicated service accounts | SPIFFE/SPIRE JWT-SVID with short-lived token exchange | Not implemented |
 | **Inference guardrails** | PII + content + injection screening | TrustyAI Guardrails Orchestrator | Stub |
-| **Tracing** | OpenTelemetry spans | MLflow Tracing + OTel | Implemented |
-| **Agent lifecycle** | Helm chart + Kagenti Agent CRDs | Kagenti Agent CRD | Both provided |
-| **Model serving** | Ollama (CPU) / vLLM (Helm) | Red Hat AI Inference Server | Both supported |
+| **Tracing** | OpenTelemetry spans | MLflow Tracing + OTel | OTel implemented; MLflow not implemented |
+| **Agent lifecycle** | Helm chart; example Kagenti manifests | GitOps / lifecycle operator | Helm implemented; operator integration is exploratory |
+| **Model serving** | Ollama for local learning; OpenAI-compatible endpoint on OpenShift | Red Hat AI Inference Server | OpenShift target documented |
 
 ### Production upgrade path
 
@@ -609,6 +620,8 @@ To move from this quickstart to production on the blueprint:
 3. **Add an MCP Gateway** (Envoy + Kuadrant/Authorino) in front of the MCP tool server for claims-based tool authorization.
 4. **Enable TrustyAI Guardrails** for ML-based input/output screening at the inference boundary.
 5. **Add OpenShell** for process-level sandboxing (seccomp, Landlock) inside each agent pod.
+
+Complete blueprint alignment additionally requires signed agent metadata, `NetworkPolicy` and optionally Kata isolation, short-lived SPIFFE/SPIRE workload identity, claims-based MCP authorization, governed tier-1/2/3 inference routing, MLflow-backed audit trails, and adversarial pre-production testing. Several of these components are emerging or preview technologies in the blueprint itself, so pin versions and report their maturity rather than labeling the whole stack “production-ready.”
 
 ### Customize for your domain
 

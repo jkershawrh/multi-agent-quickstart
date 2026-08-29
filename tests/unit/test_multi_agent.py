@@ -30,6 +30,7 @@ os.environ.setdefault("AGENT_SKILLS", "investigate,summarize")
 os.environ.setdefault("AGENT_PORT", "8001")
 
 from fastapi.testclient import TestClient
+from fastapi import Response
 
 import agent
 import auth
@@ -200,6 +201,34 @@ class TestA2ATaskSend:
 
 
 class TestOrchestratorDiscoversAgents:
+
+    def test_readiness_requires_all_configured_agents(self, monkeypatch):
+        """Readiness stays closed until every configured agent is registered."""
+        monkeypatch.setattr(
+            orchestrator,
+            "AGENT_URLS",
+            "http://research:8001,http://analyst:8002,http://executor:8003",
+        )
+        monkeypatch.setattr(orchestrator, "a2a_client", orchestrator.A2AClient())
+
+        response = Response()
+        body = _run(orchestrator.ready(response))
+        assert response.status_code == 503
+        assert body["agents_discovered"] == 0
+        assert body["agents_expected"] == 3
+
+        for name, port in (("research", 8001), ("analyst", 8002), ("executor", 8003)):
+            orchestrator.a2a_client.agents[name] = models.DiscoveredAgent(
+                name=name,
+                url=f"http://{name}:{port}",
+                skills=[],
+            )
+
+        response = Response()
+        body = _run(orchestrator.ready(response))
+        assert response.status_code == 200
+        assert body["status"] == "ready"
+
 
     def test_orchestrator_discovers_agents(self):
         """Orchestrator discovers agents by fetching their agent cards."""

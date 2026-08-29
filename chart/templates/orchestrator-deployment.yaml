@@ -32,6 +32,8 @@ spec:
           env:
             - name: AGENT_URLS
               value: "http://{{ .Release.Name }}-research:{{ .Values.agents.research.port }},http://{{ .Release.Name }}-analyst:{{ .Values.agents.analyst.port }},http://{{ .Release.Name }}-executor:{{ .Values.agents.executor.port }}"
+            - name: AGENT_DISCOVERY_INTERVAL
+              value: {{ .Values.orchestrator.discoveryInterval | quote }}
             {{- if .Values.model.deploy }}
             - name: MODEL_ENDPOINT
               value: "http://{{ .Release.Name }}-vllm-complex-predictor:80/v1"
@@ -74,7 +76,7 @@ spec:
             periodSeconds: 30
           readinessProbe:
             httpGet:
-              path: /health
+              path: /ready
               port: {{ .Values.orchestrator.port }}
             initialDelaySeconds: 5
             periodSeconds: 10

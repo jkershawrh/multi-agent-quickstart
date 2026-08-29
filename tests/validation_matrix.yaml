@@ -1,5 +1,7 @@
-# Validation Matrix -- CDD -> TDD -> EDD -> BDD
+# Validation Matrix -- CDD -> TDD -> EDD -> BDD -> CBT
 # Write tests RED, deploy until GREEN. Each stage gates the next.
+# CDD: contracts; TDD: units; EDD: live environment integration;
+# BDD: observable workflow behavior; CBT: capability-based acceptance.
 
 stages:
 
@@ -79,6 +81,10 @@ stages:
         required: true
       orchestrator_discovers_agents:
         description: "Orchestrator discovers agents via agent card endpoint"
+        points: 8
+        required: true
+      orchestrator_recovers_discovery:
+        description: "Orchestrator retries agents that were unavailable during startup and readiness stays closed until all are registered"
         points: 8
         required: true
       workflow_completes:
@@ -162,13 +168,21 @@ stages:
         description: "workflow_type=auto triggers classification and selects correct workflow"
         points: 15
         required: true
+      sequential_cpu_acceptance:
+        description: "A single CPU request produces non-demo, role-specific output for lightweight, auto-routed, and comprehensive MCP workflows"
+        points: 15
+        required: true
+      guardrails_prompt_injection_e2e:
+        description: "A direct A2A prompt-injection request is blocked with an explicit guardrail result"
+        points: 10
+        required: true
       compose_15_min:
         description: "docker compose up -> working demo in <= 15 minutes"
         points: 15
         required: true
 
   stage_4_benchmarks:
-    description: "Performance claims meet thresholds"
+    description: "Sequential response-time claims meet mode-specific thresholds; concurrency is out of scope"
     threshold: 80
     criteria:
       workflow_under_5s:
@@ -185,6 +199,10 @@ stages:
         required: true
       auth_overhead_under_10ms:
         description: "Auth middleware adds less than 10ms overhead per request"
+        points: 25
+        required: true
+      live_cpu_workflow_under_60s:
+        description: "A single three-agent CPU workflow completes in under 60 seconds with bounded output tokens"
         points: 25
         required: true
 

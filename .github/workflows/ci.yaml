@@ -40,8 +40,13 @@ jobs:
             -e AGENT_NAME=research -e AGENT_SKILLS=investigate -e AGENT_PORT=8001 -e DEMO_MODE=true \
             -p 8001:8001 multi-agent-quickstart:test \
             uvicorn agent:app --host 0.0.0.0 --port 8001
-          sleep 5
-          curl -sf http://localhost:8001/health | python3 -c "import sys,json; d=json.load(sys.stdin); assert d['status']=='healthy', d"
+          for i in $(seq 1 30); do
+            if curl -sf http://localhost:8001/health > /tmp/agent-health.json; then
+              break
+            fi
+            sleep 1
+          done
+          python3 -c "import json; d=json.load(open('/tmp/agent-health.json')); assert d['status']=='healthy', d"
           podman stop test-agent
 
   helm-lint:
@@ -137,9 +142,10 @@ jobs:
           export AGENT_URLS="http://127.0.0.1:8001,http://127.0.0.1:8002,http://127.0.0.1:8003"
           python3 -m uvicorn orchestrator:app --host 127.0.0.1 --port 8000 &
           for i in $(seq 1 30); do
-            curl -sf "http://127.0.0.1:8000/health" >/dev/null 2>&1 && break
+            curl -sf "http://127.0.0.1:8000/ready" >/dev/null 2>&1 && break
             sleep 1
           done
+          curl -sf "http://127.0.0.1:8000/ready"
       - name: Run integration tests
         run: make test-integration
       - name: Run benchmark tests
@@ -158,6 +164,18 @@ jobs:
       - name: Ruff check (errors only)
         run: ruff check src/ tests/ --select F401,F841
 
+  precommit:
+    name: Pre-commit gate
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - uses: azure/setup-helm@v4
+      - run: pip install -r src/requirements.txt pytest ruff pre-commit
+      - run: pre-commit run --all-files
+
   # ── Stage 5: Publication ─────────────────────────────────────────
   publication:
     name: "Stage 5: Publication"
@@ -174,7 +192,7 @@ jobs:
   all-green:
     name: All checks passed
     runs-on: ubuntu-latest
-    needs: [contracts, unit, integration, container-build, helm-lint, secrets-scan, python-lint, publication]
+    needs: [contracts, unit, integration, container-build, helm-lint, secrets-scan, python-lint, publication, precommit]
     if: always()
     steps:
       - name: Check all jobs
@@ -187,6 +205,7 @@ jobs:
           echo "secrets-scan:   ${{ needs.secrets-scan.result }}"
           echo "python-lint:    ${{ needs.python-lint.result }}"
           echo "publication:    ${{ needs.publication.result }}"
+          echo "precommit:      ${{ needs.precommit.result }}"
           if [[ "${{ needs.contracts.result }}" != "success" ]] || \
              [[ "${{ needs.unit.result }}" != "success" ]] || \
              [[ "${{ needs.integration.result }}" != "success" ]] || \
@@ -194,7 +213,8 @@ jobs:
              [[ "${{ needs.helm-lint.result }}" != "success" ]] || \
              [[ "${{ needs.secrets-scan.result }}" != "success" ]] || \
              [[ "${{ needs.python-lint.result }}" != "success" ]] || \
-             [[ "${{ needs.publication.result }}" != "success" ]]; then
+             [[ "${{ needs.publication.result }}" != "success" ]] || \
+             [[ "${{ needs.precommit.result }}" != "success" ]]; then
             echo "::error::One or more checks failed"
             exit 1
           fi

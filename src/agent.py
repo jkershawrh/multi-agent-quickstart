@@ -43,6 +43,10 @@ AGENT_PUBLIC_URL = os.environ.get("AGENT_PUBLIC_URL", f"http://localhost:{AGENT_
 # (A2A_CLIENT_TIMEOUT) must be larger than this.
 AGENT_LLM_TIMEOUT = float(os.environ.get("AGENT_LLM_TIMEOUT", "60"))
 
+# Bound each agent response so sequential workflows have predictable latency
+# and do not generate until the client timeout.
+AGENT_MAX_TOKENS = int(os.environ.get("AGENT_MAX_TOKENS", "256"))
+
 # Guardrails behaviour when the screening service is unreachable:
 # "open" (default) lets traffic through so the lab stays runnable;
 # "closed" blocks it. Production deployments should choose explicitly.
@@ -246,6 +250,7 @@ async def _llm_response(
                         },
                         {"role": "user", "content": text},
                     ],
+                    "max_tokens": AGENT_MAX_TOKENS,
                 },
             )
             resp.raise_for_status()

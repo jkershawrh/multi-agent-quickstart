@@ -8,13 +8,21 @@ PYTEST ?= $(PYTHON) -m pytest
 HELM ?= helm
 PODMAN ?= podman
 
-.PHONY: help test-all test-contracts test-infra test-unit test-integration \
+.PHONY: help precommit test-all test-contracts test-infra test-unit test-integration \
         test-benchmarks test-publication \
         build compose-up compose-down lint
 
 help: ## Show this help
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | sort | \
 		awk 'BEGIN {FS = ":.*?## "}; {printf "\033[36m%-24s\033[0m %s\n", $$1, $$2}'
+
+precommit: ## Fast local gate used by pre-commit before a commit is created
+	$(PYTEST) tests/contracts/ tests/unit/ tests/publication/ -q
+	$(PYTHON) -m ruff check src/ tests/ --select F401,F841
+	$(HELM) lint chart/
+	$(HELM) template test chart/ > /dev/null
+	$(HELM) template test chart/ --set model.deploy=true > /dev/null
+	git diff --check
 
 # ── Stage 0: Contracts (CDD) ──────────────────────────────────────────
 test-contracts: ## Stage 0 — Validate API contracts (OpenAPI, MCP, AsyncAPI)

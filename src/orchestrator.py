@@ -19,7 +19,7 @@ from typing import Dict, List, Optional
 
 import httpx
 import uvicorn
-from fastapi import FastAPI
+from fastapi import FastAPI, Response
 
 import models
 from auth import TokenAuthMiddleware, AGENT_AUTH_TOKEN
@@ -89,6 +89,7 @@ MODEL_COMPLEX = os.environ.get("MODEL_COMPLEX", "qwen2.5:1.5b")
 # (AGENT_LLM_TIMEOUT, default 60s) so slow CPU generations are not cut
 # off mid-flight and reported as errors. Configurable for larger models.
 A2A_CLIENT_TIMEOUT = float(os.environ.get("A2A_CLIENT_TIMEOUT", "120"))
+AGENT_DISCOVERY_INTERVAL = float(os.environ.get("AGENT_DISCOVERY_INTERVAL", "10"))
 
 
 # ---------------------------------------------------------------------------
@@ -506,21 +507,38 @@ a2a_client = A2AClient()
 semantic_router = SemanticRouter(SEMANTIC_ROUTER_ENDPOINT)
 
 
+def _agent_urls() -> List[str]:
+    return [u.strip().rstrip("/") for u in AGENT_URLS.split(",") if u.strip()]
+
+
+async def _discover_missing_agents(urls: List[str]) -> int:
+    registered_urls = {agent.url for agent in a2a_client.list_agents()}
+    for url in urls:
+        if url not in registered_urls:
+            await a2a_client.discover(url)
+    return len(a2a_client.list_agents())
+
+
+async def _discovery_loop(urls: List[str]):
+    """Keep discovering agents that were unavailable during startup."""
+    while True:
+        await asyncio.sleep(AGENT_DISCOVERY_INTERVAL)
+        discovered = await _discover_missing_agents(urls)
+        if discovered < len(urls):
+            logger.warning("Agent registry incomplete: %d/%d registered", discovered, len(urls))
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Discover agents and connect to semantic router on startup."""
     await semantic_router.connect()
 
-    urls = [u.strip() for u in AGENT_URLS.split(",") if u.strip()]
+    urls = _agent_urls()
     logger.info("Discovering %d agents...", len(urls))
 
     # Try discovery with retries for startup ordering
     for attempt in range(3):
-        for url in urls:
-            if not any(a.url == url.rstrip("/") for a in a2a_client.list_agents()):
-                await a2a_client.discover(url)
-
-        discovered = len(a2a_client.list_agents())
+        discovered = await _discover_missing_agents(urls)
         if discovered >= len(urls):
             break
 
@@ -536,8 +554,16 @@ async def lifespan(app: FastAPI):
         "Agent discovery complete: %d agents registered",
         len(a2a_client.list_agents()),
     )
-    yield
-    await semantic_router.close()
+    discovery_task = asyncio.create_task(_discovery_loop(urls))
+    try:
+        yield
+    finally:
+        discovery_task.cancel()
+        try:
+            await discovery_task
+        except asyncio.CancelledError:
+            pass
+        await semantic_router.close()
 
 
 app = FastAPI(
@@ -562,6 +588,22 @@ async def health():
         "agent_names": [a.name for a in agents],
         "semantic_routing": semantic_router.mode,
         "tracing": "active" if OTEL_AVAILABLE else "inactive",
+    }
+
+
+@app.get("/ready")
+async def ready(response: Response):
+    """Report ready only after every configured agent is registered."""
+    agents = a2a_client.list_agents()
+    expected = len(_agent_urls())
+    is_ready = len(agents) >= expected
+    if not is_ready:
+        response.status_code = 503
+    return {
+        "status": "ready" if is_ready else "not_ready",
+        "agents_discovered": len(agents),
+        "agents_expected": expected,
+        "agent_names": [a.name for a in agents],
     }
 
 

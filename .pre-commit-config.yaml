@@ -1,0 +1,9 @@
+repos:
+  - repo: local
+    hooks:
+      - id: quickstart-validation
+        name: Multi-agent quickstart validation
+        entry: make precommit
+        language: system
+        pass_filenames: false
+        always_run: true

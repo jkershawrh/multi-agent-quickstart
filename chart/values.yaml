@@ -33,6 +33,8 @@ orchestrator:
   replicas: 1
   image: quay.io/rh-ai-quickstart/multi-agent-quickstart:latest
   port: 8000
+  # Retry missing A2A agent registrations throughout the pod lifetime.
+  discoveryInterval: 10
   resources:
     requests:
       cpu: "500m"
