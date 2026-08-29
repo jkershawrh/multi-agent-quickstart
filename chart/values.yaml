@@ -19,7 +19,7 @@ model:
   # KServe downloads these Hugging Face repositories into /mnt/models.
   simpleStorageUri: "hf://Qwen/Qwen2.5-0.5B-Instruct"
   complexStorageUri: "hf://Qwen/Qwen2.5-1.5B-Instruct"
-  image: quay.io/modh/vllm:rhoai-2.20
+  image: registry.redhat.io/rhaii/vllm-cpu-rhel9@sha256:dd104214095322ca92fb71149ae2bea8cfff54d6d261079740f673a840ed0795
   resources:
     requests:
       cpu: "4"

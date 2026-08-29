@@ -146,21 +146,21 @@ The local track runs on CPU and is suitable for Intel Xeon systems. The Helm cha
 
 ### Sequential CPU validation
 
-The workflow was functionally validated on an Intel Xeon OpenShift cluster with a quantized Granite 3B model and `AGENT_MAX_TOKENS=128`. This was a single-request acceptance run, not a concurrency or capacity test.
+The workflow was functionally validated on an Intel Xeon OpenShift 4.22 cluster with `ibm-granite/granite-3.3-2b-instruct`, Red Hat AI Inference Server CPU, and `AGENT_MAX_TOKENS=64`. This was a single-request acceptance run, not a concurrency or capacity test.
 
-- One-agent lightweight workflow: 9.3 seconds
-- Auto-routed research-to-executor workflow: 21.1 seconds
-- Three-agent workflow with MCP enrichment: 46.2 seconds
+- One-agent lightweight workflow: 2.3 seconds warm (21.8 seconds on the first request)
+- Auto-routed three-agent workflow: 7.6 seconds
+- Three-agent workflow with MCP enrichment: 10.2 seconds
 - A2A discovery, role-specific outputs, response fields, AI disclaimer, MCP enrichment, and prompt-injection blocking: passed
 
-These measurements establish that the framework completes in adequate time for an interactive CPU lab on the tested cluster. They are observations, not portable performance guarantees. The validation deployment used llama.cpp for the Granite comparison; the supported OpenShift target remains the Red Hat AI Inference Server CPU image (`registry.redhat.io/rhaii/vllm-cpu-rhel9`). Re-run the acceptance matrix after moving the model to that runtime.
+These measurements establish that the framework completes in adequate time for an interactive CPU lab on the tested cluster. They are observations, not portable performance guarantees. The validated runtime was `registry.redhat.io/rhaii/vllm-cpu-rhel9` with eager execution, a 4,096-token context, string chat-template content, 32 OpenMP threads, and an 8 GiB CPU KV-cache budget. Do not overlap multiple runtimes on the same bound CPU cores; that reduced longer-prompt generation below 0.5 tokens per second during testing.
 
 ## Requirements
 
 ### Minimum hardware requirements
 
 - **Track 1 (local):** 4 CPU cores (Intel Xeon recommended), 8 GiB memory, 3 GiB storage
-- **Track 2 (OpenShift):** 6 CPU cores, 12 GiB memory, 8 GiB storage (includes llm-d-sc + model artifacts)
+- **Track 2 (OpenShift):** With external MaaS, 6 CPU cores and 12 GiB memory for the application stack. For the validated in-cluster Granite 2B CPU profile, reserve 32 CPU cores and 48 GiB memory for inference in addition to the application stack.
 
 ### Minimum software requirements
 

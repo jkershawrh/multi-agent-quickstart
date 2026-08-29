@@ -41,7 +41,7 @@ spec:
             - name: AGENT_PORT
               value: {{ $agent.port | quote }}
             - name: AGENT_MAX_TOKENS
-              value: "256"
+              value: "64"
             {{- if $.Values.model.deploy }}
             - name: MODEL_ENDPOINT
               value: "http://{{ $.Release.Name }}-vllm-complex-predictor:80/v1"

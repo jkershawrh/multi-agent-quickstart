@@ -27,7 +27,7 @@ benchmark_rubric:
   benchmarks:
     cpu_sequential_acceptance:
       description: "Single-request CPU acceptance profile; no concurrent clients"
-      model_profile: "instruction-tuned 3B/4B starting point with bounded output tokens"
+      model_profile: "Granite 2B on Red Hat AI Inference Server CPU with 64 output tokens; 3B/4B are quality comparisons"
       max_lightweight_ms: 20000
       max_auto_routed_ms: 40000
       max_comprehensive_mcp_ms: 60000
@@ -37,7 +37,7 @@ benchmark_rubric:
         - "No simulated '[agent] Processed query' response"
         - "Every step contains agent, action, result, and latency_ms"
         - "MCP query contains the MCP tool data marker"
-      notes: "Validated on the target CPU environment one request at a time. Re-run for every model/runtime combination."
+      notes: "Validated on the target CPU environment one request at a time: 2.3s warm lightweight (21.8s first request), 7.6s auto-routed, and 10.2s comprehensive MCP. Re-run for every model/runtime combination."
 
     workflow_latency:
       description: "3-agent comprehensive workflow (research -> analyst -> executor) end-to-end latency"

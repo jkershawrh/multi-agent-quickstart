@@ -29,24 +29,24 @@ claims:
     notes: "Verified by unit tests and a live sequential CPU run: research -> analyst -> executor with MCP enrichment completed in 46.2 seconds."
 
   - id: sequential-cpu-acceptance
-    value: "Granite 3B completed lightweight, auto-routed, and comprehensive MCP workflows sequentially on Intel Xeon CPU"
+    value: "Granite 2B on Red Hat AI Inference Server completed lightweight, auto-routed, and comprehensive MCP workflows sequentially on Intel Xeon CPU"
     file: README.md
     line: 0
-    source: "Live Oberon OpenShift acceptance run; one request at a time; AGENT_MAX_TOKENS=128"
+    source: "Live Oberon OpenShift 4.22 acceptance run; one request at a time; AGENT_MAX_TOKENS=64"
     source_url: ""
     verified: true
     verified_date: "2026-08-28"
-    notes: "Observed latencies: 9.3s lightweight, 21.1s auto-routed, 46.2s comprehensive MCP. No concurrency or capacity claim. Comparison used llama.cpp; repeat on registry.redhat.io/rhaii/vllm-cpu-rhel9 before claiming runtime alignment."
+    notes: "Observed warm latencies: 2.3s lightweight, 7.6s auto-routed, 10.2s comprehensive MCP; first lightweight request was 21.8s. Runtime: registry.redhat.io/rhaii/vllm-cpu-rhel9, eager mode, 32 OpenMP threads. No concurrency or capacity claim."
 
   - id: red-hat-cpu-runtime-target
     value: "Red Hat AI Inference Server CPU is the supported OpenShift runtime target"
     file: README.md
     line: 0
-    source: "Deployment target; not the runtime used for the Granite 3B comparison run"
+    source: "Live Granite 2B sequential acceptance run on Oberon"
     source_url: ""
-    verified: false
-    verified_date: ""
-    notes: "Re-run sequential CPU acceptance using registry.redhat.io/rhaii/vllm-cpu-rhel9 before marking verified."
+    verified: true
+    verified_date: "2026-08-28"
+    notes: "Verified with registry.redhat.io/rhaii/vllm-cpu-rhel9 and ibm-granite/granite-3.3-2b-instruct. String chat-template formatting is required for this Granite checkpoint."
 
   - id: semantic-routing
     value: "llm-d-sc complexity classifier selects workflow depth"

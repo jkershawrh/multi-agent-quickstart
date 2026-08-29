@@ -45,7 +45,7 @@ AGENT_LLM_TIMEOUT = float(os.environ.get("AGENT_LLM_TIMEOUT", "60"))
 
 # Bound each agent response so sequential workflows have predictable latency
 # and do not generate until the client timeout.
-AGENT_MAX_TOKENS = int(os.environ.get("AGENT_MAX_TOKENS", "256"))
+AGENT_MAX_TOKENS = int(os.environ.get("AGENT_MAX_TOKENS", "64"))
 
 # Guardrails behaviour when the screening service is unreachable:
 # "open" (default) lets traffic through so the lab stays runnable;
