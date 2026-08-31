@@ -93,6 +93,8 @@ Throughout this quickstart, you'll gain hands-on experience with the core patter
 
 ### Architecture diagrams
 
+The overview below shows the common application components. For separate system architecture and request/event flows for all three tracks, see [Compare the three quickstart tracks](docs/track-architecture-and-event-flows.md).
+
 ```mermaid
 flowchart LR
     User["User Query"]
@@ -177,7 +179,7 @@ This quickstart can be deployed by a regular user with namespace-level permissio
 |---|---|---|---|
 | **Goal** | Learn the patterns | Exercise the OpenShift path | Explore blueprint integrations |
 | **Time** | 15 minutes | 30 minutes | 60 minutes |
-| **Requires** | Python 3.9+, Ollama | OpenShift 4.14+, Helm | Completed Track 1 or 2 |
+| **Requires** | Python 3.9+, Ollama | OpenShift 4.22, OpenShift AI 3.latest, Helm | Completed Track 1 or 2 |
 | **Models** | Ollama (learning only) | Red Hat AI Inference Server or MaaS | Any OpenAI-compatible endpoint |
 | **Semantic routing** | LLM fallback | Optional llm-d-sc | llm-d-sc integration |
 | **Sandboxing** | Process-level | Pod SecurityContext | OpenShell (documented) |
