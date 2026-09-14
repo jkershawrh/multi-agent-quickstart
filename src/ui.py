@@ -17,13 +17,16 @@ HISTORY_LIMIT = 20
 
 WORKFLOW_CHOICES = ["auto", "lightweight", "standard", "comprehensive", "general"]
 
+BUSINESS_STAGES = {
+    "research": ("Evidence gathered", "Collect relevant records and operational knowledge."),
+    "analyst": ("Assessment and likely causes", "Correlate evidence and identify the most useful next step."),
+    "executor": ("Proposed governed action", "Prepare an action for a person to review and approve."),
+}
+
 EXAMPLE_QUERIES = [
-    ["Create a task to fix the login timeout bug", "auto"],
-    ["Investigate the recent spike in API error rates in EMEA", "auto"],
-    ["Look up record REC-001 and recommend next steps", "comprehensive"],
-    ["Search the knowledge base for Kubernetes resource limits best practices", "auto"],
-    ["Assign a high-priority task to review the security audit findings", "comprehensive"],
-    ["What is the status of the API migration project?", "lightweight"],
+    ["Check the status of fictional incident REC-001 and recommend the next action.", "auto"],
+    ["Investigate a fictional API error spike, assess likely causes, and prepare a remediation task.", "auto"],
+    ["Research Kubernetes resource-request guidance for a fictional service and prepare a safe recommendation.", "comprehensive"],
 ]
 
 
@@ -43,11 +46,11 @@ def render_history(history: list[dict] | None) -> str:
                 "=" * 72,
                 f"RUN {entry['run_id']}",
                 f"Completed: {entry['completed_at']}",
-                f"Workflow:  {entry['workflow']}",
+                f"Route:     {entry['workflow']}",
                 f"Duration:  {entry['total_latency_ms'] / 1000:.2f}s",
                 f"Status:    {entry['status']}",
                 "",
-                f"Query: {entry['query']}",
+                f"Incident: {entry['query']}",
                 "",
                 entry["timeline"],
                 "",
@@ -61,7 +64,7 @@ def render_history(history: list[dict] | None) -> str:
 
 
 def _render_timeline(steps: list[dict], total_latency_ms: float | None = None) -> str:
-    lines = ["DEPENDENCY-AWARE WORKFLOW TIMELINE", ""]
+    lines = ["LIVE INCIDENT RESPONSE PROGRESS", ""]
     for step in steps:
         seconds = step.get("latency_ms", 0) / 1000
         if step["status"] == "running":
@@ -70,9 +73,10 @@ def _render_timeline(steps: list[dict], total_latency_ms: float | None = None) -
         else:
             state = "DONE" if step["status"] == "completed" else "FAILED"
             timing = f"{seconds:.2f}s"
-        lines.append(
-            f"{step['sequence']}. {step['agent'].title()} / {step['action']} — {state} — {timing}"
-        )
+        business_stage = BUSINESS_STAGES.get(
+            step["agent"], (step["agent"].title(), step["action"])
+        )[0]
+        lines.append(f"{step['sequence']}. {business_stage} — {state} — {timing}")
         lines.append(f"   started:   {step['started_at']}")
         if step.get("completed_at"):
             lines.append(f"   completed: {step['completed_at']}")
@@ -113,10 +117,10 @@ def _format_tool_data(agent_name: str, action: str, tool_data: str) -> list[str]
 def run_workflow(query: str, workflow_type: str, history: list[dict] | None):
     """Stream progress, reveal each completed agent, and retain local history."""
     if not query.strip():
-        yield "Enter a query.", "", "", "", render_history(history), history or []
+        yield "Describe a fictional incident.", "", "", "", render_history(history), history or []
         return
 
-    route_lines = ["Routing request..."]
+    route_lines = ["Selecting the right response path..."]
     agent_lines: list[str] = []
     tool_lines: list[str] = []
     steps: list[dict] = []
@@ -126,7 +130,7 @@ def run_workflow(query: str, workflow_type: str, history: list[dict] | None):
     headers = {"Authorization": f"Bearer {AGENT_AUTH_TOKEN}"} if AGENT_AUTH_TOKEN else {}
 
     def outputs(total_latency_ms: float | None = None):
-        tools = tool_lines or ["No MCP tools have completed for this run."]
+        tools = tool_lines or ["No governed data tools have completed for this run."]
         return (
             "\n".join(route_lines),
             "\n".join(agent_lines) or "Waiting for the first agent result...",
@@ -154,28 +158,34 @@ def run_workflow(query: str, workflow_type: str, history: list[dict] | None):
 
                 if event_type == "workflow_started":
                     if workflow_type == "auto":
-                        route_lines[:] = ["SEMANTIC ROUTING — classifying request..."]
+                        route_lines[:] = [
+                            "AUTOMATIC WORKFLOW SELECTION",
+                            "Assessing the incident and choosing an appropriate response depth...",
+                        ]
                     else:
-                        route_lines[:] = ["STATIC ROUTING", f"  Workflow: {workflow_type}"]
+                        route_lines[:] = [
+                            "INSTRUCTOR-SELECTED WORKFLOW",
+                            f"  Response depth: {workflow_type}",
+                        ]
                     yield outputs()
                 elif event_type == "classification_completed":
                     resolved_workflow = event["resolved_workflow"]
                     classification = event.get("classification")
-                    route_lines[:] = ["SEMANTIC ROUTING ACTIVE"]
+                    route_lines[:] = ["AUTOMATIC WORKFLOW SELECTED"]
                     if classification:
                         route_lines.extend(
                             [
-                                f"  Classifier: {classification.get('classifier_id', 'N/A')}",
-                                f"  Workflow:   {resolved_workflow}",
-                                f"  Model tier: {classification.get('selected_model', 'N/A')}",
-                                f"  Latency:    {classification.get('latency_ms', 'N/A')} ms",
+                                f"  Response depth: {resolved_workflow}",
+                                f"  Model tier:     {classification.get('selected_model', 'N/A')}",
+                                f"  Selection time: {classification.get('latency_ms', 'N/A')} ms",
+                                "  Why it matters: simple requests use fewer stages; complex incidents receive deeper analysis.",
                             ]
                         )
                     else:
                         route_lines.extend(
                             [
-                                f"  Workflow: {resolved_workflow}",
-                                "  Classifier unavailable; comprehensive fallback selected.",
+                                f"  Response depth: {resolved_workflow}",
+                                "  Automatic selection was unavailable, so the safe comprehensive path was used.",
                             ]
                         )
                     yield outputs()
@@ -198,13 +208,16 @@ def run_workflow(query: str, workflow_type: str, history: list[dict] | None):
                         completed_at=event["completed_at"],
                     )
                     prose, tool_data = _tool_parts(event["result"])
+                    stage_title, stage_purpose = BUSINESS_STAGES.get(
+                        event["agent"],
+                        (event["agent"].title(), event["action"]),
+                    )
                     agent_lines.extend(
                         [
-                            "=" * 60,
-                            f"Step {event['sequence']}: {event['agent']} / {event['action']} "
-                            f"({event['latency_ms'] / 1000:.2f}s)",
-                            f"Model: {event.get('model', 'default')}",
-                            "=" * 60,
+                            f"STEP {event['sequence']} — {stage_title.upper()}",
+                            stage_purpose,
+                            f"Completed in {event['latency_ms'] / 1000:.2f}s using {event.get('model', 'default')}",
+                            "-" * 60,
                             prose,
                             "",
                         ]
@@ -217,14 +230,15 @@ def run_workflow(query: str, workflow_type: str, history: list[dict] | None):
                 elif event_type == "workflow_completed":
                     total_latency_ms = event["total_latency_ms"]
                     agent_lines.append(
-                        "** AI Disclaimer: These results are AI-generated and must not "
-                        "be used as a substitute for professional advice. **"
+                        "HUMAN REVIEW REQUIRED\n"
+                        "This is an AI-generated response package. A qualified person must "
+                        "verify the evidence and approve any action."
                     )
                     if not tool_lines:
                         tool_lines.extend(
                             [
-                                "No MCP tools were called for this query.",
-                                "Try a record lookup, knowledge-base search, or task-creation query.",
+                                "No governed data tools were needed for this incident.",
+                                "Try a record lookup, knowledge-base search, or task-creation scenario.",
                             ]
                         )
                     timeline = _render_timeline(steps, total_latency_ms)
@@ -363,57 +377,84 @@ def fetch_stats() -> str:
 # Build the Gradio interface
 # ---------------------------------------------------------------------------
 
-with gr.Blocks(title="Multi-Agent Quickstart", theme=gr.themes.Soft()) as demo:
+with gr.Blocks(title="AI Operations Incident Workspace", theme=gr.themes.Soft()) as demo:
     gr.Markdown(
-        "# Multi-Agent Quickstart\n"
-        "A2A Protocol | Semantic Routing | MCP Tool Calling | Agent Auth"
+        "# AI Operations Incident Workspace\n"
+        "Investigate a fictional service incident, assemble evidence, assess likely "
+        "causes, and prepare a governed action for human approval."
+    )
+    gr.Markdown(
+        "**What this workload demonstrates:** specialized AI agents can coordinate "
+        "an operations response while governed tools, guardrails, and a human "
+        "decision remain explicit boundaries."
     )
 
     history_state = gr.State([])
 
-    with gr.Tab("Workflow"):
+    with gr.Tab("Incident Workspace"):
+        gr.Markdown(
+            "## 1. Describe the incident\n"
+            "Use fictional or sanitized information. The workspace will choose a "
+            "response depth automatically unless an instructor opens the advanced option."
+        )
         with gr.Row():
             query_input = gr.Textbox(
-                label="Query",
-                placeholder="Describe what you need...",
-                lines=3,
+                label="Fictional incident or operations request",
+                placeholder="Example: Investigate an API error spike and prepare a remediation task.",
+                lines=4,
                 scale=3,
             )
+            timeline_output = gr.Textbox(
+                label="Live response progress",
+                value="Waiting for an incident.",
+                lines=8,
+                scale=2,
+            )
+
+        with gr.Accordion("Advanced response options", open=False):
             workflow_type = gr.Dropdown(
                 choices=WORKFLOW_CHOICES,
                 value="auto",
-                label="Workflow Type",
-                info="auto = let llm-d-sc decide; or pick explicitly",
-                scale=1,
-            )
-        run_btn = gr.Button("Run Workflow", variant="primary")
-
-        with gr.Row():
-            routing_output = gr.Textbox(
-                label="Routing Decision",
-                lines=12,
-                scale=1,
-            )
-            agent_output = gr.Textbox(
-                label="Agent Results",
-                lines=12,
-                scale=2,
-            )
-            tool_output = gr.Textbox(
-                label="MCP Tool Data",
-                lines=12,
-                scale=1,
+                label="Response depth",
+                info="Keep Automatic for the guided business scenario.",
             )
 
-        timeline_output = gr.Textbox(
-            label="Live Workflow Timeline",
-            lines=12,
+        run_btn = gr.Button("Investigate Incident", variant="primary")
+
+        gr.Examples(
+            examples=EXAMPLE_QUERIES,
+            inputs=[query_input, workflow_type],
+            label="Guided incident scenarios",
         )
 
-        with gr.Accordion("Run History (this seat and browser session)", open=False):
+        gr.Markdown(
+            "## 2. Review the response package\n"
+            "Results appear as each dependent stage completes. Evidence informs the "
+            "assessment; the proposed action still requires human review."
+        )
+
+        with gr.Row():
+            agent_output = gr.Textbox(
+                label="Incident Response Package",
+                lines=20,
+                scale=3,
+            )
+            tool_output = gr.Textbox(
+                label="Supporting Evidence",
+                lines=20,
+                scale=2,
+            )
+
+        with gr.Accordion("Why this response path was selected", open=False):
+            routing_output = gr.Textbox(
+                label="Workflow selection details",
+                lines=8,
+            )
+
+        with gr.Accordion("Previous incident runs (this seat and browser session)", open=False):
             history_output = gr.Textbox(
-                label="Previous Runs",
-                value="No workflows have run in this browser session.",
+                label="Run history",
+                value="No incident workflows have run in this browser session.",
                 lines=24,
             )
             clear_history_btn = gr.Button("Clear History")
@@ -431,36 +472,45 @@ with gr.Blocks(title="Multi-Agent Quickstart", theme=gr.themes.Soft()) as demo:
             ],
         )
         clear_history_btn.click(
-            fn=lambda: ("No workflows have run in this browser session.", []),
+            fn=lambda: ("No incident workflows have run in this browser session.", []),
             inputs=[],
             outputs=[history_output, history_state],
         )
 
-        gr.Examples(
-            examples=EXAMPLE_QUERIES,
-            inputs=[query_input, workflow_type],
-            label="Example queries",
+    with gr.Tab("Technical Details"):
+        gr.Markdown(
+            "## How the workload operates\n"
+            "The orchestrator delegates bounded work to independently discoverable "
+            "agents. Governed MCP tools remain separate from model inference, and "
+            "guardrails screen inputs and outputs."
         )
+        with gr.Accordion("Agent responsibilities and discovery", open=True):
+            gr.Markdown(
+                "**Research** gathers evidence. **Analyst** assesses likely causes. "
+                "**Executor** prepares a proposed action. Each role publishes an A2A card."
+            )
+            refresh_btn = gr.Button("Refresh Agent Registry")
+            agents_output = gr.Textbox(label="Discovered agent contracts", lines=15)
+            refresh_btn.click(fn=fetch_agents, inputs=[], outputs=agents_output)
 
-    with gr.Tab("Agent Registry"):
-        refresh_btn = gr.Button("Refresh Agents")
-        agents_output = gr.Textbox(label="Discovered Agents", lines=15)
-        refresh_btn.click(fn=fetch_agents, inputs=[], outputs=agents_output)
+        with gr.Accordion("Governed tools", open=False):
+            gr.Markdown(
+                "MCP tools perform schema-defined lookup or task actions outside the "
+                "language model so access can be authorized, tested, and audited."
+            )
+            tools_btn = gr.Button("Refresh Governed Tools")
+            tools_output = gr.Textbox(label="Available tool contracts", lines=20)
+            tools_btn.click(fn=fetch_tools, inputs=[], outputs=tools_output)
 
-    with gr.Tab("MCP Tools"):
-        tools_btn = gr.Button("Refresh Tools")
-        tools_output = gr.Textbox(label="Available MCP Tools", lines=20)
-        tools_btn.click(fn=fetch_tools, inputs=[], outputs=tools_output)
-
-    with gr.Tab("System Status"):
-        stats_btn = gr.Button("Refresh")
-        stats_output = gr.Textbox(label="System Health", lines=15)
-        stats_btn.click(fn=fetch_stats, inputs=[], outputs=stats_output)
+        with gr.Accordion("Runtime health", open=False):
+            stats_btn = gr.Button("Refresh System Status")
+            stats_output = gr.Textbox(label="Technical system health", lines=15)
+            stats_btn.click(fn=fetch_stats, inputs=[], outputs=stats_output)
 
     gr.Markdown(
         "---\n"
-        "Agent responses are AI-generated -- verify "
-        "recommendations with qualified professionals."
+        "Agent responses are AI-generated. Verify evidence and approve actions through "
+        "your organization's established operational process."
     )
 
 if __name__ == "__main__":

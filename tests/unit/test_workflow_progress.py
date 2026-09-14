@@ -154,10 +154,50 @@ def test_ui_reveals_running_and_completed_steps_and_saves_the_run(monkeypatch):
     updates = list(ui.run_workflow("Investigate and resolve", "comprehensive", []))
 
     assert len(updates) >= 8
-    assert "Research / investigate — RUNNING" in updates[1][3]
-    assert "Research / investigate — DONE" in updates[2][3]
-    assert "Analyst / analyze — RUNNING" in updates[3][3]
-    assert "Executor / execute — DONE" in updates[-1][3]
+    assert "Evidence gathered — RUNNING" in updates[1][3]
+    assert "Evidence gathered — DONE" in updates[2][3]
+    assert "Assessment and likely causes — RUNNING" in updates[3][3]
+    assert "Proposed governed action — DONE" in updates[-1][3]
     assert "Total workflow time:" in updates[-1][3]
     assert updates[-1][5][0]["query"] == "Investigate and resolve"
-    assert "Research / investigate" in updates[-1][4]
+    assert "Evidence gathered" in updates[-1][4]
+
+
+def test_workspace_leads_with_the_business_workload_and_hides_diagnostics():
+    config = json.dumps(ui.demo.config, default=str)
+
+    assert "AI Operations Incident Workspace" in config
+    assert "Incident Response Package" in config
+    assert "Supporting Evidence" in config
+    assert "Investigate Incident" in config
+    assert "Technical Details" in config
+    assert "Multi-Agent Quickstart" not in config
+    assert '"label": "Agent Results"' not in config
+    assert '"label": "Routing Decision"' not in config
+
+
+def test_completed_agents_are_explained_as_business_stages(monkeypatch):
+    events = _collect_events()
+
+    class FakeStreamResponse:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args):
+            return False
+
+        def raise_for_status(self):
+            return None
+
+        def iter_lines(self):
+            return [json.dumps(event) for event in events]
+
+    monkeypatch.setattr(ui.httpx, "stream", lambda *args, **kwargs: FakeStreamResponse())
+    completed = list(
+        ui.run_workflow("Investigate and resolve", "comprehensive", [])
+    )[-1]
+
+    assert "EVIDENCE GATHERED" in completed[1]
+    assert "ASSESSMENT AND LIKELY CAUSES" in completed[1]
+    assert "PROPOSED GOVERNED ACTION" in completed[1]
+    assert "HUMAN REVIEW REQUIRED" in completed[1]
