@@ -1,5 +1,9 @@
 """Gradio UI for the Multi-Agent Quickstart."""
 
+from __future__ import annotations
+
+import ast
+import json
 import os
 
 import gradio as gr
@@ -7,6 +11,9 @@ import httpx
 
 ORCHESTRATOR_URL = os.environ.get("ORCHESTRATOR_URL", "http://localhost:8000")
 MCP_SERVER_URL = os.environ.get("MCP_SERVER_URL", "http://localhost:8004")
+AGENT_AUTH_TOKEN = os.environ.get("AGENT_AUTH_TOKEN", "")
+UI_WORKFLOW_TIMEOUT = float(os.environ.get("UI_WORKFLOW_TIMEOUT", "300"))
+HISTORY_LIMIT = 20
 
 WORKFLOW_CHOICES = ["auto", "lightweight", "standard", "comprehensive", "general"]
 
@@ -20,114 +27,228 @@ EXAMPLE_QUERIES = [
 ]
 
 
-def run_workflow(query: str, workflow_type: str) -> tuple[str, str, str]:
-    """POST a query and return (routing, agent results, tool data)."""
-    if not query.strip():
-        return "Enter a query.", "", ""
-    try:
-        resp = httpx.post(
-            f"{ORCHESTRATOR_URL}/api/v1/workflow",
-            json={"query": query, "workflow_type": workflow_type},
-            timeout=120.0,
+def add_history_entry(history: list[dict] | None, entry: dict) -> list[dict]:
+    """Keep a bounded, newest-first history inside this Gradio browser session."""
+    return [entry, *list(history or [])][:HISTORY_LIMIT]
+
+
+def render_history(history: list[dict] | None) -> str:
+    """Render seat-local workflow history without sending it to Launchpad."""
+    if not history:
+        return "No workflows have run in this browser session."
+    sections = []
+    for entry in history:
+        sections.extend(
+            [
+                "=" * 72,
+                f"RUN {entry['run_id']}",
+                f"Completed: {entry['completed_at']}",
+                f"Workflow:  {entry['workflow']}",
+                f"Duration:  {entry['total_latency_ms'] / 1000:.2f}s",
+                f"Status:    {entry['status']}",
+                "",
+                f"Query: {entry['query']}",
+                "",
+                entry["timeline"],
+                "",
+                entry.get("agent_results", ""),
+                "",
+                entry.get("tool_data", ""),
+                "",
+            ]
         )
-        resp.raise_for_status()
-        data = resp.json()
-    except httpx.HTTPStatusError as exc:
-        return f"HTTP error {exc.response.status_code}: {exc.response.text}", "", ""
-    except httpx.RequestError as exc:
-        return f"Connection error: {exc}", "", ""
+    return "\n".join(sections)
 
-    # --- Routing panel ---
-    routing_lines: list[str] = []
-    classification = data.get("classification")
-    if classification:
-        routing_lines.append("SEMANTIC ROUTING ACTIVE")
-        routing_lines.append(f"  Classifier:  {classification.get('classifier_id', 'N/A')}")
-        routing_lines.append(f"  Workflow:    {classification.get('selected_workflow', 'N/A')}")
-        model = classification.get("selected_model", "")
-        if model:
-            routing_lines.append(f"  Model tier:  {model}")
-        routing_lines.append(f"  Latency:     {classification.get('latency_ms', 'N/A')} ms")
-        signals = classification.get("signals", [])
-        if signals:
-            routing_lines.append("")
-            routing_lines.append("  Signal rankings:")
-            for s in signals:
-                bar_len = max(0, int((s["score"] + 1) * 12))
-                bar = "#" * bar_len
-                routing_lines.append(f"    {s['label']:<12} {s['score']:+.3f}  {bar}")
-    else:
-        routing_lines.append("STATIC ROUTING")
-        routing_lines.append(f"  Workflow: {workflow_type}")
-        routing_lines.append("  (llm-d-sc not connected -- using default)")
 
-    routing_lines.append("")
-    routing_lines.append(f"Agents involved: {', '.join(data.get('agents_involved', []))}")
-    routing_lines.append(f"Total latency:   {data.get('total_latency_ms', 'N/A')} ms")
-    routing_lines.append(f"Steps:           {len(data.get('steps', []))}")
+def _render_timeline(steps: list[dict], total_latency_ms: float | None = None) -> str:
+    lines = ["DEPENDENCY-AWARE WORKFLOW TIMELINE", ""]
+    for step in steps:
+        seconds = step.get("latency_ms", 0) / 1000
+        if step["status"] == "running":
+            state = "RUNNING"
+            timing = "timer started"
+        else:
+            state = "DONE" if step["status"] == "completed" else "FAILED"
+            timing = f"{seconds:.2f}s"
+        lines.append(
+            f"{step['sequence']}. {step['agent'].title()} / {step['action']} — {state} — {timing}"
+        )
+        lines.append(f"   started:   {step['started_at']}")
+        if step.get("completed_at"):
+            lines.append(f"   completed: {step['completed_at']}")
+    if total_latency_ms is not None:
+        lines.extend(["", f"Total workflow time: {total_latency_ms / 1000:.2f}s"])
+    return "\n".join(lines)
 
-    # --- Agent results panel ---
+
+def _tool_parts(result_text: str) -> tuple[str, str]:
+    if "[MCP tool data retrieved]" not in result_text:
+        return result_text, ""
+    parts = result_text.split("[MCP tool data retrieved]", 1)
+    return parts[0].strip(), parts[1].strip() if len(parts) > 1 else ""
+
+
+def _format_tool_data(agent_name: str, action: str, tool_data: str) -> list[str]:
+    lines = [f"--- {agent_name} / {action} ---"]
+    for line in tool_data.split("\n"):
+        line = line.strip()
+        if line.startswith("[") and "]: " in line:
+            tool_name = line.split("]: ")[0].lstrip("[")
+            raw_data = line.split("]: ", 1)[1]
+            lines.append(f"  Tool: {tool_name}")
+            try:
+                parsed = ast.literal_eval(raw_data)
+                if isinstance(parsed, dict):
+                    lines.extend(f"    {key}: {value}" for key, value in parsed.items())
+                else:
+                    lines.append(f"    {raw_data}")
+            except Exception:
+                lines.append(f"    {raw_data}")
+        elif line:
+            lines.append(f"  {line}")
+    lines.append("")
+    return lines
+
+
+def run_workflow(query: str, workflow_type: str, history: list[dict] | None):
+    """Stream progress, reveal each completed agent, and retain local history."""
+    if not query.strip():
+        yield "Enter a query.", "", "", "", render_history(history), history or []
+        return
+
+    route_lines = ["Routing request..."]
     agent_lines: list[str] = []
     tool_lines: list[str] = []
+    steps: list[dict] = []
+    run_id = "pending"
+    resolved_workflow = workflow_type
+    current_history = list(history or [])
+    headers = {"Authorization": f"Bearer {AGENT_AUTH_TOKEN}"} if AGENT_AUTH_TOKEN else {}
 
-    for i, step in enumerate(data.get("steps", []), start=1):
-        result_text = step.get("result", "")
-        agent_name = step.get("agent", "unknown")
-        action = step.get("action", "N/A")
-        latency = step.get("latency_ms", "N/A")
+    def outputs(total_latency_ms: float | None = None):
+        tools = tool_lines or ["No MCP tools have completed for this run."]
+        return (
+            "\n".join(route_lines),
+            "\n".join(agent_lines) or "Waiting for the first agent result...",
+            "\n".join(tools),
+            _render_timeline(steps, total_latency_ms),
+            render_history(current_history),
+            current_history,
+        )
 
-        # Split MCP tool data from agent prose
-        if "[MCP tool data retrieved]" in result_text:
-            parts = result_text.split("[MCP tool data retrieved]", 1)
-            prose = parts[0].strip()
-            tool_data = parts[1].strip() if len(parts) > 1 else ""
-        else:
-            prose = result_text
-            tool_data = ""
+    try:
+        with httpx.stream(
+            "POST",
+            f"{ORCHESTRATOR_URL}/api/v1/workflow/stream",
+            json={"query": query, "workflow_type": workflow_type},
+            headers=headers,
+            timeout=UI_WORKFLOW_TIMEOUT,
+        ) as resp:
+            resp.raise_for_status()
+            for line in resp.iter_lines():
+                if not line:
+                    continue
+                event = json.loads(line)
+                event_type = event["event"]
+                run_id = event.get("run_id", run_id)
 
-        agent_lines.append(f"{'=' * 60}")
-        agent_lines.append(f"  Step {i}: {agent_name} / {action}  ({latency} ms)")
-        agent_lines.append(f"{'=' * 60}")
-        agent_lines.append(prose)
-        agent_lines.append("")
-
-        if tool_data:
-            tool_lines.append(f"--- {agent_name} / {action} ---")
-            for line in tool_data.split("\n"):
-                line = line.strip()
-                if line.startswith("[") and "]: " in line:
-                    tool_name = line.split("]:")[0].lstrip("[")
-                    raw_data = line.split("]: ", 1)[1]
-                    tool_lines.append(f"  Tool: {tool_name}")
-                    # Pretty-print the dict-like data
-                    try:
-                        import ast
-                        parsed = ast.literal_eval(raw_data)
-                        if isinstance(parsed, dict):
-                            for k, v in parsed.items():
-                                tool_lines.append(f"    {k}: {v}")
-                        else:
-                            tool_lines.append(f"    {raw_data}")
-                    except Exception:
-                        tool_lines.append(f"    {raw_data}")
-                elif line:
-                    tool_lines.append(f"  {line}")
-            tool_lines.append("")
-
-    if not tool_lines:
-        tool_lines.append("No MCP tools were called for this query.")
-        tool_lines.append("")
-        tool_lines.append("Try queries that mention:")
-        tool_lines.append("  - Records (e.g. 'REC-001')")
-        tool_lines.append("  - Knowledge base searches")
-        tool_lines.append("  - Task creation or assignments")
-
-    agent_lines.append(
-        "** AI Disclaimer: These results are AI-generated and must not "
-        "be used as a substitute for professional advice. **"
-    )
-
-    return "\n".join(routing_lines), "\n".join(agent_lines), "\n".join(tool_lines)
+                if event_type == "workflow_started":
+                    if workflow_type == "auto":
+                        route_lines[:] = ["SEMANTIC ROUTING — classifying request..."]
+                    else:
+                        route_lines[:] = ["STATIC ROUTING", f"  Workflow: {workflow_type}"]
+                    yield outputs()
+                elif event_type == "classification_completed":
+                    resolved_workflow = event["resolved_workflow"]
+                    classification = event.get("classification")
+                    route_lines[:] = ["SEMANTIC ROUTING ACTIVE"]
+                    if classification:
+                        route_lines.extend(
+                            [
+                                f"  Classifier: {classification.get('classifier_id', 'N/A')}",
+                                f"  Workflow:   {resolved_workflow}",
+                                f"  Model tier: {classification.get('selected_model', 'N/A')}",
+                                f"  Latency:    {classification.get('latency_ms', 'N/A')} ms",
+                            ]
+                        )
+                    else:
+                        route_lines.extend(
+                            [
+                                f"  Workflow: {resolved_workflow}",
+                                "  Classifier unavailable; comprehensive fallback selected.",
+                            ]
+                        )
+                    yield outputs()
+                elif event_type == "agent_started":
+                    steps.append(
+                        {
+                            "sequence": event["sequence"],
+                            "agent": event["agent"],
+                            "action": event["action"],
+                            "status": "running",
+                            "started_at": event["started_at"],
+                        }
+                    )
+                    yield outputs()
+                elif event_type == "agent_completed":
+                    step = next(item for item in steps if item["sequence"] == event["sequence"])
+                    step.update(
+                        status=event["status"],
+                        latency_ms=event["latency_ms"],
+                        completed_at=event["completed_at"],
+                    )
+                    prose, tool_data = _tool_parts(event["result"])
+                    agent_lines.extend(
+                        [
+                            "=" * 60,
+                            f"Step {event['sequence']}: {event['agent']} / {event['action']} "
+                            f"({event['latency_ms'] / 1000:.2f}s)",
+                            f"Model: {event.get('model', 'default')}",
+                            "=" * 60,
+                            prose,
+                            "",
+                        ]
+                    )
+                    if tool_data:
+                        tool_lines.extend(
+                            _format_tool_data(event["agent"], event["action"], tool_data)
+                        )
+                    yield outputs()
+                elif event_type == "workflow_completed":
+                    total_latency_ms = event["total_latency_ms"]
+                    agent_lines.append(
+                        "** AI Disclaimer: These results are AI-generated and must not "
+                        "be used as a substitute for professional advice. **"
+                    )
+                    if not tool_lines:
+                        tool_lines.extend(
+                            [
+                                "No MCP tools were called for this query.",
+                                "Try a record lookup, knowledge-base search, or task-creation query.",
+                            ]
+                        )
+                    timeline = _render_timeline(steps, total_latency_ms)
+                    current_history = add_history_entry(
+                        current_history,
+                        {
+                            "run_id": run_id,
+                            "query": query,
+                            "workflow": resolved_workflow,
+                            "status": "completed",
+                            "total_latency_ms": total_latency_ms,
+                            "completed_at": event["completed_at"],
+                            "timeline": timeline,
+                            "agent_results": "\n".join(agent_lines),
+                            "tool_data": "\n".join(tool_lines),
+                        },
+                    )
+                    yield outputs(total_latency_ms)
+    except httpx.HTTPStatusError as exc:
+        route_lines[:] = [f"HTTP error {exc.response.status_code}: {exc.response.text}"]
+        yield outputs()
+    except httpx.RequestError as exc:
+        route_lines[:] = [f"Connection error: {exc}"]
+        yield outputs()
 
 
 def fetch_agents() -> str:
@@ -248,6 +369,8 @@ with gr.Blocks(title="Multi-Agent Quickstart", theme=gr.themes.Soft()) as demo:
         "A2A Protocol | Semantic Routing | MCP Tool Calling | Agent Auth"
     )
 
+    history_state = gr.State([])
+
     with gr.Tab("Workflow"):
         with gr.Row():
             query_input = gr.Textbox(
@@ -282,10 +405,35 @@ with gr.Blocks(title="Multi-Agent Quickstart", theme=gr.themes.Soft()) as demo:
                 scale=1,
             )
 
+        timeline_output = gr.Textbox(
+            label="Live Workflow Timeline",
+            lines=12,
+        )
+
+        with gr.Accordion("Run History (this seat and browser session)", open=False):
+            history_output = gr.Textbox(
+                label="Previous Runs",
+                value="No workflows have run in this browser session.",
+                lines=24,
+            )
+            clear_history_btn = gr.Button("Clear History")
+
         run_btn.click(
             fn=run_workflow,
-            inputs=[query_input, workflow_type],
-            outputs=[routing_output, agent_output, tool_output],
+            inputs=[query_input, workflow_type, history_state],
+            outputs=[
+                routing_output,
+                agent_output,
+                tool_output,
+                timeline_output,
+                history_output,
+                history_state,
+            ],
+        )
+        clear_history_btn.click(
+            fn=lambda: ("No workflows have run in this browser session.", []),
+            inputs=[],
+            outputs=[history_output, history_state],
         )
 
         gr.Examples(

@@ -10,16 +10,19 @@ via environment variables. Ships with 3 example agents
 """
 
 import asyncio
+import json
 import logging
 import os
 import time
 import uuid
 from contextlib import asynccontextmanager
-from typing import Dict, List, Optional
+from datetime import datetime, timezone
+from typing import AsyncIterator, Dict, List, Optional
 
 import httpx
 import uvicorn
 from fastapi import FastAPI, Response
+from fastapi.responses import StreamingResponse
 
 import models
 from auth import TokenAuthMiddleware, AGENT_AUTH_TOKEN
@@ -378,16 +381,48 @@ async def _execute_workflow_inner(
     query: str,
     workflow_type: str,
 ) -> models.WorkflowResponse:
+    completed_response = None
+    async for event in workflow_events(a2a_client, query, workflow_type):
+        if event["event"] == "workflow_completed":
+            completed_response = models.WorkflowResponse(**event["response"])
+    if completed_response is None:
+        raise RuntimeError("Workflow ended without a completion event")
+    return completed_response
+
+
+def _utc_now() -> str:
+    return datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
+
+
+async def workflow_events(
+    a2a_client: A2AClient,
+    query: str,
+    workflow_type: str,
+    *,
+    router: Optional[SemanticRouter] = None,
+) -> AsyncIterator[dict]:
+    """Publish ordered progress events while preserving dependency chaining."""
     classification = None
     model_override = ""
     endpoint_override = ""
+    requested_workflow = workflow_type
+    active_router = router or semantic_router
+    run_id = str(uuid.uuid4())
+    workflow_started_at = _utc_now()
+
+    yield {
+        "event": "workflow_started",
+        "run_id": run_id,
+        "requested_workflow": requested_workflow,
+        "started_at": workflow_started_at,
+    }
 
     _wf_span = tracer.start_span("workflow", attributes={"workflow.type_requested": workflow_type}) if tracer else None
     try:
-        if workflow_type == "auto" and semantic_router.active:
-            _cls_span = tracer.start_span("classify", attributes={"classify.mode": semantic_router.mode}) if tracer else None
+        if workflow_type == "auto" and active_router.active:
+            _cls_span = tracer.start_span("classify", attributes={"classify.mode": active_router.mode}) if tracer else None
             try:
-                classification = await semantic_router.classify(query)
+                classification = await active_router.classify(query)
             finally:
                 if _cls_span:
                     if classification:
@@ -418,6 +453,17 @@ async def _execute_workflow_inner(
         elif workflow_type == "auto":
             workflow_type = "comprehensive"
 
+        if requested_workflow == "auto":
+            yield {
+                "event": "classification_completed",
+                "run_id": run_id,
+                "resolved_workflow": workflow_type,
+                "classification": (
+                    classification.model_dump(mode="json") if classification else None
+                ),
+                "completed_at": _utc_now(),
+            }
+
         if _wf_span:
             _wf_span.set_attribute("workflow.type_resolved", workflow_type)
             _wf_span.set_attribute("workflow.model_override", model_override or "default")
@@ -432,8 +478,18 @@ async def _execute_workflow_inner(
         total_start = time.monotonic()
 
         context = query
-        for agent_name, action in steps_config:
+        for sequence, (agent_name, action) in enumerate(steps_config, start=1):
             step_start = time.monotonic()
+            step_started_at = _utc_now()
+
+            yield {
+                "event": "agent_started",
+                "run_id": run_id,
+                "sequence": sequence,
+                "agent": agent_name,
+                "action": action,
+                "started_at": step_started_at,
+            }
 
             _agent_span = tracer.start_span("agent_call", attributes={
                 "agent.name": agent_name,
@@ -452,29 +508,60 @@ async def _execute_workflow_inner(
                     _agent_span.end()
 
             result_text = _extract_result_text(result)
+            step_completed_at = _utc_now()
+            step_status = "failed" if result_text.startswith("Error:") else "completed"
 
             steps.append(models.WorkflowStep(
                 agent=agent_name,
                 action=action,
                 result=result_text,
                 latency_ms=step_latency,
+                status=step_status,
+                started_at=step_started_at,
+                completed_at=step_completed_at,
+                model=model_override or MODEL_NAME,
             ))
             agents_involved.append(agent_name)
+            yield {
+                "event": "agent_completed",
+                "run_id": run_id,
+                "sequence": sequence,
+                "agent": agent_name,
+                "action": action,
+                "result": result_text,
+                "status": step_status,
+                "latency_ms": step_latency,
+                "started_at": step_started_at,
+                "completed_at": step_completed_at,
+                "model": model_override or MODEL_NAME,
+            }
             context = f"{context}\n\nPrevious step ({agent_name}/{action}): {result_text}"
 
         total_latency = round((time.monotonic() - total_start) * 1000, 2)
+        workflow_completed_at = _utc_now()
 
         if _wf_span:
             _wf_span.set_attribute("workflow.total_latency_ms", total_latency)
             _wf_span.set_attribute("workflow.steps_count", len(steps))
 
-        return models.WorkflowResponse(
+        response = models.WorkflowResponse(
             steps=steps,
             total_latency_ms=total_latency,
             agents_involved=list(dict.fromkeys(agents_involved)),
             classification=classification,
+            run_id=run_id,
+            started_at=workflow_started_at,
+            completed_at=workflow_completed_at,
             ai_disclaimer=AI_DISCLAIMER,
         )
+        yield {
+            "event": "workflow_completed",
+            "run_id": run_id,
+            "resolved_workflow": workflow_type,
+            "total_latency_ms": total_latency,
+            "completed_at": workflow_completed_at,
+            "response": response.model_dump(mode="json"),
+        }
     finally:
         if _wf_span:
             _wf_span.end()
@@ -650,6 +737,25 @@ async def run_workflow(request: models.WorkflowRequest):
         a2a_client,
         query=request.query,
         workflow_type=request.workflow_type,
+    )
+
+
+@app.post("/api/v1/workflow/stream")
+async def stream_workflow(request: models.WorkflowRequest):
+    """Stream newline-delimited workflow events as each agent changes state."""
+
+    async def event_stream():
+        async for event in workflow_events(
+            a2a_client,
+            query=request.query,
+            workflow_type=request.workflow_type,
+        ):
+            yield json.dumps(event, separators=(",", ":")) + "\n"
+
+    return StreamingResponse(
+        event_stream(),
+        media_type="application/x-ndjson",
+        headers={"Cache-Control": "no-store"},
     )
 
 

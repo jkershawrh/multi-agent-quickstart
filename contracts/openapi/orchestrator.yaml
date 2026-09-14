@@ -6,7 +6,7 @@ info:
     workflows. Discovers agents via agent-card.json, maintains a registry,
     and executes multi-step workflows by delegating tasks to specialized
     agents (research, analyst, executor). Runs on Intel Xeon CPU.
-  version: "1.0.0"
+  version: "1.1.0"
   contact:
     name: Red Hat AI Quickstarts
     url: https://github.com/rh-ai-quickstart
@@ -79,6 +79,38 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/WorkflowResponse"
+        "422":
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /api/v1/workflow/stream:
+    post:
+      operationId: streamWorkflow
+      summary: Stream multi-agent workflow progress
+      description: >
+        Executes the same dependency-aware workflow as /api/v1/workflow and
+        emits one newline-delimited JSON event whenever routing or an agent
+        changes state. An agent_completed event is emitted before the next
+        dependent agent_started event.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/WorkflowRequest"
+      responses:
+        "200":
+          description: Ordered workflow progress event stream
+          content:
+            application/x-ndjson:
+              schema:
+                type: string
+                description: One WorkflowProgressEvent JSON object per line.
+                x-ndjson-item:
+                  $ref: "#/components/schemas/WorkflowProgressEvent"
         "422":
           description: Validation error
           content:
@@ -241,6 +273,18 @@ components:
           type: number
           format: float
           example: 45.2
+        status:
+          type: string
+          enum: [completed, failed]
+          default: completed
+        started_at:
+          type: string
+          format: date-time
+        completed_at:
+          type: string
+          format: date-time
+        model:
+          type: string
 
     ClassificationSignal:
       type: object
@@ -298,9 +342,57 @@ components:
           example: ["research", "analyst", "executor"]
         classification:
           $ref: "#/components/schemas/ClassificationResult"
+        run_id:
+          type: string
+          format: uuid
+        started_at:
+          type: string
+          format: date-time
+        completed_at:
+          type: string
+          format: date-time
         ai_disclaimer:
           type: string
           example: "Agent responses are AI-generated -- verify recommendations with qualified professionals."
+
+    WorkflowProgressEvent:
+      type: object
+      required: [event, run_id]
+      properties:
+        event:
+          type: string
+          enum:
+            - workflow_started
+            - classification_completed
+            - agent_started
+            - agent_completed
+            - workflow_completed
+        run_id:
+          type: string
+          format: uuid
+        sequence:
+          type: integer
+          minimum: 1
+        agent:
+          type: string
+        action:
+          type: string
+        status:
+          type: string
+          enum: [running, completed, failed]
+        latency_ms:
+          type: number
+          format: float
+        started_at:
+          type: string
+          format: date-time
+        completed_at:
+          type: string
+          format: date-time
+        model:
+          type: string
+        response:
+          $ref: "#/components/schemas/WorkflowResponse"
 
     ErrorResponse:
       type: object

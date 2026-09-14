@@ -123,6 +123,10 @@ class WorkflowStep(BaseModel):
     action: str
     result: str
     latency_ms: float
+    status: str = "completed"
+    started_at: Optional[str] = None
+    completed_at: Optional[str] = None
+    model: Optional[str] = None
 
 
 class WorkflowResponse(BaseModel):
@@ -130,6 +134,9 @@ class WorkflowResponse(BaseModel):
     total_latency_ms: float
     agents_involved: List[str]
     classification: Optional[ClassificationResult] = None
+    run_id: str = Field(default_factory=lambda: str(uuid.uuid4()))
+    started_at: Optional[str] = None
+    completed_at: Optional[str] = None
     ai_disclaimer: str = (
         "Agent responses are AI-generated -- verify "
         "recommendations with qualified professionals."

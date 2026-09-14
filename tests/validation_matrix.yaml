@@ -103,6 +103,14 @@ stages:
         description: "Each workflow step reports positive latency_ms"
         points: 5
         required: true
+      progressive_workflow_events:
+        description: "Each dependent agent publishes started and completed events before the next agent begins"
+        points: 8
+        required: true
+      seat_local_run_history:
+        description: "Participant UI retains the newest 20 runs in seat-local browser state and supports explicit clearing"
+        points: 5
+        required: true
       semantic_routing_classification:
         description: "ClassificationResult model validates and maps complexity to workflows"
         points: 8

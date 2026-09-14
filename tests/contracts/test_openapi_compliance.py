@@ -82,3 +82,18 @@ class TestOpenAPIContractValidation:
                     _find_refs(item, f"{path}[{i}]")
 
         _find_refs(spec)
+
+    def test_orchestrator_declares_progressive_ndjson_contract(self):
+        spec = yaml.safe_load((CONTRACTS_DIR / "orchestrator.yaml").read_text())
+        operation = spec["paths"]["/api/v1/workflow/stream"]["post"]
+        content = operation["responses"]["200"]["content"]
+
+        assert "application/x-ndjson" in content
+        event = spec["components"]["schemas"]["WorkflowProgressEvent"]
+        assert event["properties"]["event"]["enum"] == [
+            "workflow_started",
+            "classification_completed",
+            "agent_started",
+            "agent_completed",
+            "workflow_completed",
+        ]

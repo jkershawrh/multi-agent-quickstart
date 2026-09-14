@@ -74,7 +74,8 @@ By the end of this quickstart, you will have:
 - A guardrails service that screens agent inputs and outputs for PII and harmful content
 - OpenTelemetry tracing across the workflow for observability
 - Bearer token authentication between the orchestrator and agents
-- A Gradio UI for interactive exploration (requires Python 3.10+)
+- A Gradio UI with a live dependency-aware agent timeline and seat-local run
+  history for interactive exploration (requires Python 3.10+)
 - Understanding of how to customize the system for your own domain and deploy to OpenShift
 
 #### Key agentic AI patterns you'll learn
@@ -285,7 +286,13 @@ curl -s -X POST http://localhost:8000/api/v1/workflow \
   | python3 -m json.tool
 ```
 
-**What to look for:** The `"steps"` array contains 3 entries -- research, analyst, executor -- each with its own result and measured latency. Each step's context accumulates, so the analyst sees what research found and the executor sees both.
+**What to look for:** The `"steps"` array contains 3 entries -- research,
+analyst, executor -- each with its own result, timestamps, model, and measured
+latency. Each step's context accumulates, so the analyst sees what research
+found and the executor sees both. The UI uses
+`POST /api/v1/workflow/stream` to reveal each result as it completes instead of
+waiting to display all three together. Its newest 20 runs remain only in that
+browser session and can be cleared by the participant.
 
 ### Step 5: See semantic routing
 
