@@ -1,0 +1,437 @@
+version: 1
+status: reviewed
+source:
+  name: multi-agent-quickstart
+  kind: repository
+  location: .
+  revision: codex/multi-agent-review-fixes
+  discovered_at: "2026-09-25"
+  inspected_artifacts:
+    - README.md
+    - contracts/openapi/orchestrator.yaml
+    - contracts/openapi/mcp.yaml
+    - contracts/workflow-policy.schema.json
+    - contracts/reviewer-profile.schema.json
+    - contracts/proof-pack.schema.json
+    - docs/track-architecture-and-event-flows.md
+    - examples/incident-response/workflow-policy.yaml
+    - examples/incident-response/reviewer-profile.yaml
+    - src/orchestrator.py
+    - src/agent.py
+    - src/mcp_server.py
+    - src/guardrails.py
+    - src/workflow_policy.py
+    - src/approval_store.py
+    - chart/templates/
+    - tests/validation_matrix.yaml
+    - tests/benchmark_rubric.yaml
+    - tests/claim_registry.yaml
+  discrepancies:
+    - Track 3 contains target integrations that are documented but not end-to-end validated; they are excluded from the primary live proof.
+    - Local demo responses are simulated when no model endpoint is configured and must never be labeled live inference.
+
+intent:
+  primary_user: AI engineers, solution architects, platform engineers, and system integrators
+  workload: A domain-neutral request delegated through cooperating research, analyst, and executor agents
+  recognized_problem: A single opaque agent can hide routing, context, tool access, model participation, and action authority inside one response.
+  audience_decision: Decide whether open protocols and explicit governance provide an inspectable foundation for a domain-specific multi-agent workflow.
+  desired_outcome: Prove that A2A delegation, semantic routing, bounded MCP access, guardrails, model inference, and human approval remain visible and independently governed.
+
+architecture:
+  actors:
+    - id: participant
+      name: Participant or operator
+      kind: human
+      responsibility: Submit the goal, inspect accumulated evidence, and approve or deny risky remediation.
+      status: verified
+      source: README.md
+    - id: incident-commander
+      name: Incident commander
+      kind: human-authority
+      responsibility: Own the approve or deny decision for create_task remediation.
+      status: verified
+      source: examples/incident-response/reviewer-profile.yaml
+  runtime_objects:
+    - id: route
+      name: OpenShift Route and Service
+      kind: platform-entry
+      responsibility: Terminate TLS and expose the orchestrator.
+      status: verified
+      source: chart/templates/orchestrator-deployment.yaml
+    - id: orchestrator
+      name: FastAPI orchestrator
+      kind: workflow-service
+      responsibility: Discover agents, classify requests, choose workflow depth and model tier, accumulate context, and enforce approval pauses.
+      status: verified
+      source: src/orchestrator.py
+    - id: semantic-router
+      name: llm-d semantic classifier
+      kind: routing-service
+      responsibility: Classify complexity over gRPC when configured; otherwise the orchestrator may use an LLM classifier fallback.
+      status: verified
+      source: src/orchestrator.py
+    - id: research
+      name: Research agent
+      kind: a2a-agent
+      responsibility: Investigate and summarize using read-only MCP tools allowed by policy.
+      status: verified
+      source: src/agent.py
+    - id: analyst
+      name: Analyst agent
+      kind: a2a-agent
+      responsibility: Analyze accumulated context and recommend a conclusion.
+      status: verified
+      source: src/agent.py
+    - id: executor
+      name: Executor agent
+      kind: a2a-agent
+      responsibility: Prepare or perform the final bounded action after policy and approval checks.
+      status: verified
+      source: src/agent.py
+    - id: mcp
+      name: MCP tool server
+      kind: tool-service
+      responsibility: Expose lookup_record, search_knowledge_base, and create_task through JSON-RPC tools/list and tools/call.
+      status: verified
+      source: src/mcp_server.py
+    - id: guardrails
+      name: Guardrails service
+      kind: safety-service
+      responsibility: Screen agent inputs and outputs and fail closed when configured but unavailable.
+      status: verified
+      source: src/guardrails.py
+    - id: model
+      name: OpenAI-compatible model endpoint
+      kind: inference-service
+      responsibility: Generate role-specific agent responses with the selected model override.
+      status: verified
+      source: src/agent.py
+    - id: policy
+      name: Versioned workflow policy
+      kind: deterministic-policy
+      responsibility: Define each agent's allowed tools and actions requiring approval.
+      status: verified
+      source: src/workflow_policy.py
+    - id: approval-store
+      name: Ephemeral approval store
+      kind: runtime-state
+      responsibility: Record pending, approved, denied, and completed decisions without inferring consent after restart.
+      status: verified
+      source: src/approval_store.py
+  boundaries:
+    - id: namespace
+      name: OpenShift namespace
+      kind: deployment-boundary
+      responsibility: Contain the quickstart services, secrets, policies, and workload identity.
+      status: verified
+      source: chart/templates/
+    - id: a2a-auth
+      name: A2A authentication boundary
+      kind: trust-boundary
+      responsibility: Require the configured bearer token for delegated A2A requests while leaving health and discovery open.
+      status: verified
+      source: src/auth.py
+    - id: tool-authority
+      name: MCP action-authority boundary
+      kind: authority-boundary
+      responsibility: Keep read-only evidence retrieval separate from create_task remediation.
+      status: verified
+      source: examples/incident-response/workflow-policy.yaml
+    - id: model-boundary
+      name: Inference boundary
+      kind: external-service
+      responsibility: Separate orchestration and policy from generated model output.
+      status: verified
+      source: chart/templates/vllm-serving.yaml
+  external_dependencies:
+    - id: cpu-runtime
+      name: Red Hat AI Inference Server on Intel Xeon
+      kind: model-runtime
+      responsibility: Serve instruction models through an OpenAI-compatible API for the validated OpenShift path.
+      status: verified
+      source: README.md
+    - id: otel
+      name: OTLP collector
+      kind: observability
+      responsibility: Receive optional workflow, classification, and agent spans.
+      status: verified
+      source: docs/track-architecture-and-event-flows.md
+  flows:
+    - id: agent-discovery
+      name: Agent capability discovery
+      kind: request
+      trigger: Orchestrator startup and periodic refresh
+      outcome: A registry of healthy agents, URLs, skills, and readiness state
+      edges:
+        - from: orchestrator
+          to: research
+          purpose: Read the A2A AgentCard.
+          protocol: HTTPS GET /.well-known/agent-card.json
+          evidence_ids: [agent-registry]
+        - from: orchestrator
+          to: analyst
+          purpose: Read the A2A AgentCard.
+          protocol: HTTPS GET /.well-known/agent-card.json
+          evidence_ids: [agent-registry]
+        - from: orchestrator
+          to: executor
+          purpose: Read the A2A AgentCard.
+          protocol: HTTPS GET /.well-known/agent-card.json
+          evidence_ids: [agent-registry]
+    - id: routed-workflow
+      name: Routed multi-agent workflow
+      kind: request
+      trigger: Participant submits POST /api/v1/workflow
+      outcome: Structured steps, classification, policy, model metadata, measured latency, and AI disclaimer
+      edges:
+        - from: participant
+          to: route
+          purpose: Submit a bounded workflow request.
+          protocol: HTTPS JSON
+        - from: route
+          to: orchestrator
+          purpose: Forward the request into the namespace.
+          protocol: HTTP JSON
+        - from: orchestrator
+          to: semantic-router
+          purpose: Classify complexity and choose workflow depth and model tier when auto routing is active.
+          protocol: gRPC or OpenAI-compatible fallback
+          evidence_ids: [routing-decision]
+        - from: orchestrator
+          to: research
+          purpose: Delegate investigation with the selected model and policy context.
+          protocol: Authenticated A2A JSON-RPC tasks/send
+          evidence_ids: [agent-step]
+        - from: research
+          to: analyst
+          purpose: Pass accumulated research context through the orchestrator.
+          protocol: Orchestrated A2A context
+          evidence_ids: [agent-step]
+        - from: analyst
+          to: executor
+          purpose: Pass accumulated analysis toward a bounded final action.
+          protocol: Orchestrated A2A context
+          evidence_ids: [agent-step]
+    - id: bounded-agent-execution
+      name: Bounded agent inference and tools
+      kind: evidence
+      trigger: An A2A agent receives a delegated task
+      outcome: Screened generated output enriched only by allowed tool results
+      edges:
+        - from: research
+          to: guardrails
+          purpose: Screen input before inference and output before return.
+          protocol: HTTP JSON
+          evidence_ids: [guardrail-result]
+        - from: research
+          to: mcp
+          purpose: Retrieve records or approved knowledge allowed by policy.
+          protocol: MCP JSON-RPC tools/call
+          evidence_ids: [tool-result]
+        - from: research
+          to: model
+          purpose: Generate the role-specific response from bounded prompt and tool context.
+          protocol: OpenAI-compatible chat completions
+          evidence_ids: [model-participation]
+        - from: analyst
+          to: model
+          purpose: Analyze accumulated context.
+          protocol: OpenAI-compatible chat completions
+          evidence_ids: [model-participation]
+        - from: executor
+          to: mcp
+          purpose: Request create_task only when policy and approval permit it.
+          protocol: MCP JSON-RPC tools/call
+          evidence_ids: [policy-decision, approval-decision]
+    - id: governed-remediation
+      name: Human-governed remediation
+      kind: authority
+      trigger: Executor reaches create_task under the incident-response policy
+      outcome: The workflow pauses until a human approves or denies exactly one remediation
+      edges:
+        - from: orchestrator
+          to: policy
+          purpose: Resolve tool allow-list and approval requirement from the versioned policy.
+          protocol: Local deterministic evaluation
+          evidence_ids: [policy-decision]
+        - from: policy
+          to: approval-store
+          purpose: Create a pending decision rather than executing remediation.
+          protocol: In-process state transition
+          evidence_ids: [approval-decision]
+        - from: incident-commander
+          to: approval-store
+          purpose: Approve or deny the pending action.
+          protocol: HTTPS API
+          evidence_ids: [approval-decision]
+        - from: approval-store
+          to: executor
+          purpose: Permit one approved create_task call or preserve denial.
+          protocol: Governed A2A continuation
+          evidence_ids: [tool-result]
+    - id: proof-export
+      name: Sanitized proof export
+      kind: evidence
+      trigger: Participant downloads a workflow proof pack
+      outcome: A ZIP containing sanitized policy, routing, agent-step, guardrail, and approval evidence
+      edges:
+        - from: orchestrator
+          to: participant
+          purpose: Return the proof pack for review and reproduction.
+          protocol: HTTPS ZIP
+          evidence_ids: [proof-pack]
+
+operational_pattern:
+  name: Discover, route, delegate, enrich, govern, prove
+  rationale: The quickstart teaches interoperable cooperation and explicit authority, not merely that several model calls can be chained together.
+  steps:
+    - id: discover
+      label: Discover capable agents
+      question: Which agents are healthy, where are they, and what skills do they advertise?
+      flow_ids: [agent-discovery]
+      evidence_ids: [agent-registry]
+    - id: route
+      label: Classify the request
+      question: What workflow depth and model tier does this request require?
+      flow_ids: [routed-workflow]
+      evidence_ids: [routing-decision]
+    - id: delegate
+      label: Accumulate specialist context
+      question: Which agents participated, in what order, and what did each add?
+      flow_ids: [routed-workflow]
+      evidence_ids: [agent-step]
+    - id: enrich
+      label: Bound inference and tools
+      question: What prompt context, model, guardrail result, and MCP evidence were actually used?
+      flow_ids: [bounded-agent-execution]
+      evidence_ids: [model-participation, guardrail-result, tool-result]
+    - id: govern
+      label: Pause action at the authority boundary
+      question: Which deterministic rule blocks remediation until a human decides?
+      flow_ids: [governed-remediation]
+      evidence_ids: [policy-decision, approval-decision]
+      decision_id: remediation-authority
+    - id: prove
+      label: Export reviewable evidence
+      question: Can another reviewer trace routing, agents, tools, safety, and authority from the same run?
+      flow_ids: [proof-export]
+      evidence_ids: [proof-pack]
+  changed_condition: Run the same incident once with the certified baseline and once with the versioned approval policy, or approve versus deny the pending remediation.
+  close: The presentation closes after proving the authority boundary; the hands-on lab then lets the participant customize the agents, policy, and tools.
+
+evidence:
+  - id: agent-registry
+    name: Discovered A2A agents and skills
+    source: GET /api/v1/agents and /ready
+    collection: Live orchestrator response
+    supports: The orchestrator discovered the displayed agents rather than relying on a slide inventory.
+    status: verified
+  - id: routing-decision
+    name: Classification signals, selected workflow, selected model tier, and latency
+    source: Workflow response classification object
+    collection: Live response when auto routing is active
+    supports: The displayed route and model selection occurred for this request.
+    status: verified
+  - id: agent-step
+    name: Agent, action, result, policy decisions, and measured latency
+    source: Workflow response steps
+    collection: Live response
+    supports: The displayed specialists participated in the displayed order.
+    status: verified
+  - id: model-participation
+    name: Selected model and generated role output
+    source: Workflow classification and agent result
+    collection: Live response; simulated responses must retain demo labeling
+    supports: A model participated in the named task with the shown boundary.
+    status: verified
+  - id: tool-result
+    name: MCP tool name, result, caller, and policy disposition
+    source: Agent result and MCP service
+    collection: Live response
+    supports: The agent used only the displayed evidence or action tool.
+    status: verified
+  - id: guardrail-result
+    name: Input and output screening disposition
+    source: Guardrails response and workflow evidence
+    collection: Live response
+    supports: Unsafe input was blocked or allowed according to the displayed result.
+    status: verified
+  - id: policy-decision
+    name: Policy name, checksum, tool allow-list, and approval rule
+    source: GET /api/v1/policy and workflow response
+    collection: Live deterministic policy state
+    supports: The authority boundary came from a versioned rule, not model discretion.
+    status: verified
+  - id: approval-decision
+    name: Pending, approved, denied, or completed approval state
+    source: Approval API
+    collection: Live human decision
+    supports: Remediation did not execute without explicit human authority.
+    status: verified
+  - id: proof-pack
+    name: Sanitized workflow proof ZIP
+    source: GET /api/v1/proof-pack/{workflow_id}
+    collection: Current workflow evidence
+    supports: The run can be reviewed and reproduced without exposing raw sensitive prompts.
+    status: verified
+
+decisions:
+  - id: workflow-selection
+    owner: Orchestrator configuration and semantic router
+    policy: Map classified complexity to a workflow depth and model tier; explicit workflow_type overrides auto routing.
+    fail_closed_behavior: Fall back to the documented comprehensive workflow when auto classification is unavailable; expose routing state.
+    status: verified
+  - id: tool-authorization
+    owner: Versioned workflow policy
+    policy: Research may lookup and search, analyst may search, and executor may create a task.
+    fail_closed_behavior: Deny tools absent from the agent's allow-list; invalid configured policy fails readiness.
+    status: verified
+  - id: remediation-authority
+    owner: Incident commander
+    policy: create_task requires an explicit approve or deny decision under the incident-response policy.
+    fail_closed_behavior: Pause before execution; restart clears ephemeral approval state and never implies consent.
+    status: verified
+
+ai_assessment:
+  needed: true
+  kind: agentic
+  rationale: Generative models create role-specific research, analysis, and executor outputs; semantic classification may use embeddings or an LLM fallback. Deterministic policy and human approval—not the LLM—own action authority.
+  tasks:
+    - Classify request complexity when semantic routing uses the LLM fallback
+    - Generate research findings from the request and approved MCP context
+    - Analyze accumulated specialist context
+    - Draft the executor response or action report
+  inputs:
+    - Participant query
+    - Prior agent outputs accumulated by the orchestrator
+    - Results from MCP tools allowed for that agent
+    - Role prompt and selected model override
+  outputs:
+    - Classification when the LLM fallback is active
+    - Role-specific natural-language artifacts
+    - Proposed final recommendation or action report
+  model_identity_source: Workflow classification and deployment configuration
+  hardware_identity_source: OpenShift model-serving deployment and live platform inspection
+  evidence_access:
+    - Submitted query
+    - Accumulated prior-agent context
+    - Explicit MCP tool results allowed by policy
+  action_authority: recommend
+  validation:
+    - Input and output guardrail screening
+    - OpenAPI and JSON-RPC contracts
+    - Agent and tool allow-lists
+    - Human approval for create_task remediation
+  fallback: With no configured model, local demo responses are simulated and must remain labeled; configured but unreachable guardrails block processing.
+  final_decision_owner: Human participant or incident commander
+
+story_mapping:
+  audience_question: Can cooperating AI agents remain interoperable, observable, and governed when a workflow reaches a real action boundary?
+  stakes:
+    - A multi-agent answer is not trustworthy when routing, context, tools, and model participation are hidden.
+    - Chaining agents without a separate authority boundary can turn a generated suggestion into an unreviewed action.
+  architecture_flow_ids: [agent-discovery, routed-workflow, bounded-agent-execution, governed-remediation]
+  live_proof_flow_ids: [routed-workflow, governed-remediation, proof-export]
+  comparison: Compare the certified baseline with policy-enabled human approval, then show approve and deny as distinguishable outcomes.
+  payoff: Open protocols make cooperation inspectable; deterministic policy and human review keep generated reasoning separate from action authority.
+  next_journey: Close the presentation, then hand off to the Launchpad lab to customize a role, tool allow-list, and approval policy.

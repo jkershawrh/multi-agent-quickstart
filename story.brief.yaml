@@ -1,0 +1,97 @@
+version: 1
+blueprint: demo-blueprint.yaml
+presentation:
+  title: Three agents. One governed decision.
+  audience: AI engineers, solution architects, and platform engineers
+  desired_decision: Evaluate the quickstart as an inspectable foundation for a domain-specific multi-agent workflow.
+  duration_minutes: 7
+  core_tension: Multi-agent cooperation increases capability, but hidden context and action authority increase risk.
+  cta: Close the proof, then enter the lab to customize one agent role, tool policy, and approval boundary.
+
+source_material:
+  mode: repository
+  items:
+    - demo-blueprint.yaml
+    - README.md
+    - docs/track-architecture-and-event-flows.md
+    - contracts/openapi/orchestrator.yaml
+    - contracts/openapi/mcp.yaml
+  consequential_assumptions: []
+
+architecture:
+  actors: [participant, incident-commander]
+  boundaries: [namespace, a2a-auth, tool-authority, model-boundary]
+  critical_flows: [agent-discovery, routed-workflow, bounded-agent-execution, governed-remediation, proof-export]
+  omitted_from_main_story:
+    - Track 3 target integrations that are not end-to-end validated
+    - Installation mechanics that belong in the hands-on lab
+
+beats:
+  - beat: ordinary-world
+    claim: One agent can answer a prompt; a real workflow needs specialists, evidence, and an owner for the final action.
+  - beat: stakes
+    claim: Hidden routing, context, tools, and authority make a multi-agent result difficult to trust or review.
+  - beat: root-cause
+    claim: More agents do not create governance; protocols and policy must expose each handoff.
+  - beat: reframe
+    claim: Treat the workflow as an evidence path with a human authority boundary, not a chain of chat responses.
+  - beat: system-reveal
+    claim: A2A discovery and delegation, MCP tools, guardrails, model inference, and policy have separate responsibilities.
+  - beat: live-proof
+    claim: A live request reveals its route, model tier, participating agents, tool evidence, latency, and policy state.
+  - beat: trials
+    claim: Enabling the incident policy changes the same workflow from automatic completion to a pending human decision.
+  - beat: transformation
+    claim: Open cooperation remains inspectable, while action authority remains human.
+  - beat: next-journey
+    claim: The lab begins only after the presentation closes and lets the learner customize roles, tools, and policy.
+
+evidence:
+  - id: live-agent-registry
+    claim: Three advertised A2A roles are discovered by the orchestrator.
+    classification: live-measurement
+    source: GET /api/v1/agents
+    owner: Orchestrator
+    last_verified: null
+    treatment: Show names and skills only from the current response.
+  - id: live-workflow
+    claim: The request returns classification, ordered agent steps, model selection, policy state, and measured latency.
+    classification: live-measurement
+    source: POST /api/v1/workflow
+    owner: Orchestrator
+    last_verified: null
+    treatment: Preserve every step and label simulated local output as rehearsal or demo.
+  - id: live-approval
+    claim: create_task pauses under policy until the incident commander approves or denies it.
+    classification: live-measurement
+    source: Approval API and workflow response
+    owner: Incident commander
+    last_verified: null
+    treatment: Show policy checksum, pending state, human decision, and final disposition.
+  - id: live-proof-pack
+    claim: The current run exports sanitized routing, agent, guardrail, policy, and approval evidence.
+    classification: live-measurement
+    source: GET /api/v1/proof-pack/{workflow_id}
+    owner: Orchestrator
+    last_verified: null
+    treatment: List contents from the current artifact rather than an authored inventory.
+
+live_systems:
+  - id: orchestrator
+    health: /health
+    readiness: /ready
+    proof: /api/v1/workflow
+  - id: approvals
+    proof: /api/v1/approvals
+  - id: proof-pack
+    proof: /api/v1/proof-pack/{workflow_id}
+
+journey:
+  presentation: 7-minute story ending with a current-session authority proof and explicit close
+  live_demonstration: Run the same incident with baseline and governed policy, then approve or deny
+  guided_demo: Trace A2A, model, MCP, guardrail, policy, and human-authority boundaries
+  hands_on_lab: Customize one role, tool allow-list, reviewer policy, failure case, and proof artifact
+
+open_questions:
+  - Which deployed environment and endpoint should power the presentation's live adapters?
+  - Should the primary changed condition demonstrate approve versus deny, or baseline versus governed policy?
