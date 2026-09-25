@@ -15,7 +15,7 @@ describe('presentation controls', () => {
   it('supports deep links', () => {
     window.history.replaceState(null, '', '/?act=1&scene=0')
     render(<App />)
-    expect(screen.getByText('Earn each handoff before the workflow runs')).toBeInTheDocument()
+    expect(screen.getByText('Separate the workload before connecting the flow')).toBeInTheDocument()
   })
 
   it('restarts from the brand control', () => {
@@ -37,6 +37,6 @@ describe('presentation controls', () => {
     window.history.replaceState(null, '', '/?act=0&scene=0')
     render(<App />)
     fireEvent.click(screen.getByRole('button', { name: 'Toggle presenter prompt' }))
-    expect(screen.getByText(/Open on the governance problem/)).toBeInTheDocument()
+    expect(screen.getByText(/article’s thesis/)).toBeInTheDocument()
   })
 })

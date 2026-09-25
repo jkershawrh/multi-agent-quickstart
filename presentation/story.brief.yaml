@@ -1,46 +1,51 @@
 version: 1
 blueprint: ../demo-blueprint.yaml
 presentation:
-  title: "Three agents. One governed decision."
+  title: "From agents to an open cloud-native blueprint"
   audience: AI engineers, solution architects, and platform engineers
-  desired_decision: Evaluate an inspectable foundation for a governed multi-agent workflow
+  desired_decision: Understand how the QuickStart operationalizes a runnable subset of Red Hat's open Agentic AI solution blueprint on Intel Xeon CPU inference
   duration_minutes: 7
-  core_tension: Multi-agent cooperation increases capability while hidden context and authority increase risk
-  cta: Close the proof, then enter the lab to customize roles, tools, and policy
+  core_tension: An agent is a new workload class with lifecycle, isolation, identity, tools, inference, silicon, and authority beyond the model
+  cta: Close the proof, then enter the lab to trace and extend one blueprint boundary
 
 source_material:
   mode: repository
   items:
+    - https://developers.redhat.com/articles/2026/07/20/architect-open-blueprint-cloud-native-ai-agents
     - ../demo-blueprint.yaml
     - ../docs/track-architecture-and-event-flows.md
   consequential_assumptions: []
 
 architecture:
-  actors: []
-  boundaries: []
-  critical_flows: []
-  omitted_from_main_story: []
+  actors: [participant, incident-commander]
+  boundaries: [control-band, agent-workload, mcp-checkpoint, inference-plane, platform-and-silicon]
+  critical_flows: [agent-discovery, routed-workflow, bounded-agent-execution, governed-remediation]
+  omitted_from_main_story:
+    - Target capabilities not deployed in this QuickStart
+    - Installation mechanics reserved for the hands-on lab
 
 beats:
   - beat: ordinary-world
-    claim: Teams can prototype AI faster than they can operationalize it.
+    claim: A model is stateless; Red Hat control and Intel Xeon compute help turn it into an operable agent workload.
   - beat: stakes
-    claim: Unmeasured assumptions create cost and delivery risk.
+    claim: Hidden lifecycle, identity, tool, routing, silicon, and authority boundaries make agent results hard to trust.
+  - beat: reframe
+    claim: Treat the agent as an open cloud-native workload whose layers can evolve independently.
   - beat: system-reveal
-    claim: A right-sized platform makes the decision observable.
+    claim: The blueprint separates control, agent, tool, inference, audit, platform, and silicon responsibilities.
   - beat: live-proof
-    claim: The configured workload can produce a measured result.
+    claim: The live QuickStart reveals A2A delegation, MCP evidence, Intel Xeon inference, policy, latency, and human authority.
   - beat: transformation
-    claim: The audience can decide from evidence instead of architecture promises.
+    claim: The audience can distinguish the implemented slice, configurable integrations, and blueprint targets from evidence.
 
 evidence:
-  - id: example-proof
-    claim: The demonstration returns a measured result.
-    classification: rehearsal-fixture
-    source: public/fixtures/demo-proof.json
-    owner: Demo author
+  - id: live-blueprint-slice
+    claim: The demonstration returns live agent discovery, workflow, model, policy, and authority evidence.
+    classification: live-measurement
+    source: GET /api/v1/agents and POST /api/v1/workflow
+    owner: Orchestrator
     last_verified: null
-    treatment: Show with a REHEARSAL badge until the live endpoint succeeds.
+    treatment: Show LIVE only after endpoint success; label checked-in fallback data REHEARSAL.
 
 live_systems: []
 journey:

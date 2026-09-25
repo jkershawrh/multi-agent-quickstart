@@ -1,16 +1,17 @@
 version: 1
 blueprint: demo-blueprint.yaml
 presentation:
-  title: Three agents. One governed decision.
+  title: From agents to an open cloud-native blueprint
   audience: AI engineers, solution architects, and platform engineers
-  desired_decision: Evaluate the quickstart as an inspectable foundation for a domain-specific multi-agent workflow.
+  desired_decision: Understand how the QuickStart operationalizes a runnable subset of Red Hat's open Agentic AI solution blueprint on an Intel Xeon CPU inference foundation.
   duration_minutes: 7
-  core_tension: Multi-agent cooperation increases capability, but hidden context and action authority increase risk.
-  cta: Close the proof, then enter the lab to customize one agent role, tool policy, and approval boundary.
+  core_tension: An agent is a new workload class; treating it as only a model call hides lifecycle, isolation, identity, tools, routing, silicon, and authority.
+  cta: Close the proof, then enter the lab to trace and extend one blueprint boundary.
 
 source_material:
   mode: repository
   items:
+    - https://developers.redhat.com/articles/2026/07/20/architect-open-blueprint-cloud-native-ai-agents
     - demo-blueprint.yaml
     - README.md
     - docs/track-architecture-and-event-flows.md
@@ -28,21 +29,21 @@ architecture:
 
 beats:
   - beat: ordinary-world
-    claim: One agent can answer a prompt; a real workflow needs specialists, evidence, and an owner for the final action.
+    claim: A model is stateless; the harness, sandbox, tools, identity, routing, and platform turn it into an operable agent workload.
   - beat: stakes
     claim: Hidden routing, context, tools, and authority make a multi-agent result difficult to trust or review.
   - beat: root-cause
     claim: More agents do not create governance; protocols and policy must expose each handoff.
   - beat: reframe
-    claim: Treat the workflow as an evidence path with a human authority boundary, not a chain of chat responses.
+    claim: Treat the agent as an open cloud-native workload assembled from interchangeable roles behind neutral interfaces.
   - beat: system-reveal
-    claim: A2A discovery and delegation, MCP tools, guardrails, model inference, and policy have separate responsibilities.
+    claim: Red Hat control and integration, Intel Xeon CPU inference, agent, skill, governance, and audit layers have separate responsibilities and maturity.
   - beat: live-proof
-    claim: A live request reveals its route, model tier, participating agents, tool evidence, latency, and policy state.
+    claim: A live request reveals its route, Intel Xeon-hosted model tier, participating agents, tool evidence, latency, and policy state.
   - beat: trials
     claim: Enabling the incident policy changes the same workflow from automatic completion to a pending human decision.
   - beat: transformation
-    claim: Open cooperation remains inspectable, while action authority remains human.
+    claim: The QuickStart makes one blueprint slice runnable without pretending every target integration is already deployed.
   - beat: next-journey
     claim: The lab begins only after the presentation closes and lets the learner customize roles, tools, and policy.
 

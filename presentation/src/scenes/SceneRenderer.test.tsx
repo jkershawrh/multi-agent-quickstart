@@ -34,7 +34,7 @@ describe('SceneRenderer', () => {
     expect(screen.queryByLabelText('Live technical deployment topology')).not.toBeInTheDocument()
     fireEvent.click(screen.getByRole('button', { name: 'Inspect technical topology' }))
     expect(screen.getByLabelText('Live technical deployment topology')).toBeInTheDocument()
-    expect(screen.getByText('OpenShift namespace')).toBeInTheDocument()
+    expect(screen.getByText('OpenShift agent workload')).toBeInTheDocument()
     expect(screen.getByText('POST /api/v1/workflow')).toBeInTheDocument()
     fireEvent.click(screen.getByRole('button', { name: /discover live agents/i }))
     expect((await screen.findAllByText('Discover capable agents'))[0]).toBeInTheDocument()
@@ -68,13 +68,13 @@ describe('SceneRenderer', () => {
   it('guides architecture as audience questions and revealed answers', async () => {
     const scene = scenes.find((item) => item.type === 'guided-architecture')!
     render(<SceneRenderer scene={scene} brand={demoConfig.brand} />)
-    expect(screen.getByText('What enters the system—and where?')).toBeInTheDocument()
-    expect(screen.queryByText('A bounded workflow request enters through an OpenShift Route and Service.')).not.toBeInTheDocument()
+    expect(screen.getByText('How is an agent declared, deployed, and reconciled?')).toBeInTheDocument()
+    expect(screen.queryByText('Implemented now: Helm and GitOps create an OpenShift workload with explicit configuration.')).not.toBeInTheDocument()
     fireEvent.click(screen.getByRole('button', { name: 'Reveal technical boundary' }))
-    expect(await screen.findByText('A bounded workflow request enters through an OpenShift Route and Service.')).toBeInTheDocument()
+    expect(await screen.findByText('Implemented now: Helm and GitOps create an OpenShift workload with explicit configuration.')).toBeInTheDocument()
     expect(document.querySelector('[data-node="route"]')).toHaveClass('active')
     fireEvent.click(screen.getByRole('button', { name: 'Ask next question →' }))
-    expect(await screen.findByText('Who decides how much work this request needs?')).toBeInTheDocument()
+    expect(await screen.findByText('What runs separately from the model?')).toBeInTheDocument()
   })
 
   it('keeps the presenter pitch at seven scenes or fewer', () => {
@@ -93,7 +93,7 @@ describe('SceneRenderer', () => {
     const configured = scenes.find((item) => item.type === 'evidence-payoff')!
     const scene = { ...configured, adapterIds: ['proof-that-has-not-run'] }
     render(<SceneRenderer scene={scene} brand={demoConfig.brand} />)
-    expect(screen.getByText('Run the live agent journey to build the proof')).toBeInTheDocument()
+    expect(screen.getByText('Run the implemented blueprint slice to build the proof')).toBeInTheDocument()
     expect(screen.getByText('not run')).toBeInTheDocument()
   })
 
