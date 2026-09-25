@@ -1,0 +1,51 @@
+version: 1
+blueprint: ../demo-blueprint.yaml
+presentation:
+  title: "Three agents. One governed decision."
+  audience: AI engineers, solution architects, and platform engineers
+  desired_decision: Evaluate an inspectable foundation for a governed multi-agent workflow
+  duration_minutes: 7
+  core_tension: Multi-agent cooperation increases capability while hidden context and authority increase risk
+  cta: Close the proof, then enter the lab to customize roles, tools, and policy
+
+source_material:
+  mode: repository
+  items:
+    - ../demo-blueprint.yaml
+    - ../docs/track-architecture-and-event-flows.md
+  consequential_assumptions: []
+
+architecture:
+  actors: []
+  boundaries: []
+  critical_flows: []
+  omitted_from_main_story: []
+
+beats:
+  - beat: ordinary-world
+    claim: Teams can prototype AI faster than they can operationalize it.
+  - beat: stakes
+    claim: Unmeasured assumptions create cost and delivery risk.
+  - beat: system-reveal
+    claim: A right-sized platform makes the decision observable.
+  - beat: live-proof
+    claim: The configured workload can produce a measured result.
+  - beat: transformation
+    claim: The audience can decide from evidence instead of architecture promises.
+
+evidence:
+  - id: example-proof
+    claim: The demonstration returns a measured result.
+    classification: rehearsal-fixture
+    source: public/fixtures/demo-proof.json
+    owner: Demo author
+    last_verified: null
+    treatment: Show with a REHEARSAL badge until the live endpoint succeeds.
+
+live_systems: []
+journey:
+  presentation: 5–7 minute decision story with no more than seven scenes
+  live_demonstration: 5–10 minute proof in the operator or system workspace
+  guided_demo: 20–35 minute instructor-led architecture and evidence trace
+  hands_on_lab: 60–90 minute build, failure, qualification, and takeaway artifact
+open_questions: []
