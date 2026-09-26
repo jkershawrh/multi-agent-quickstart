@@ -27,17 +27,17 @@ describe('SceneRenderer', () => {
     render(<SceneRenderer scene={scene} brand={demoConfig.brand} />)
     expect(screen.getByTestId('live-workspace')).toBeInTheDocument()
     expect(screen.getByText('Investigate INC-1042 and prepare—but do not execute—a remediation.')).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: /discover capable agents/i })).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: /run a lightweight request/i })).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: /change the workflow depth/i })).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: /inspect the authority boundary/i })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /confirm available capabilities/i })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /match effort to the request/i })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /build an evidence-backed recommendation/i })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /keep the decision with the accountable owner/i })).toBeInTheDocument()
     expect(screen.queryByLabelText('Live technical deployment topology')).not.toBeInTheDocument()
     fireEvent.click(screen.getByRole('button', { name: 'Inspect technical topology' }))
     expect(screen.getByLabelText('Live technical deployment topology')).toBeInTheDocument()
     expect(screen.getByText('OpenShift agent workload')).toBeInTheDocument()
     expect(screen.getByText('POST /api/v1/workflow')).toBeInTheDocument()
-    fireEvent.click(screen.getByRole('button', { name: /discover live agents/i }))
-    expect((await screen.findAllByText('Discover capable agents'))[0]).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: /start the live process/i }))
+    expect((await screen.findAllByText('Confirm available capabilities'))[0]).toBeInTheDocument()
     expect(await screen.findByRole('button', { name: /next live act/i })).toBeInTheDocument()
   })
 
@@ -68,13 +68,13 @@ describe('SceneRenderer', () => {
   it('guides architecture as audience questions and revealed answers', async () => {
     const scene = scenes.find((item) => item.type === 'guided-architecture')!
     render(<SceneRenderer scene={scene} brand={demoConfig.brand} />)
-    expect(screen.getByText('How is an agent declared, deployed, and reconciled?')).toBeInTheDocument()
-    expect(screen.queryByText('Implemented now: Helm and GitOps create an OpenShift workload with explicit configuration.')).not.toBeInTheDocument()
+    expect(screen.getByText('What outcome should this agent process deliver—and who owns it?')).toBeInTheDocument()
+    expect(screen.queryByText('Define the request, expected result, business owner, and deployment policy before selecting models or tools.')).not.toBeInTheDocument()
     fireEvent.click(screen.getByRole('button', { name: 'Reveal technical boundary' }))
-    expect(await screen.findByText('Implemented now: Helm and GitOps create an OpenShift workload with explicit configuration.')).toBeInTheDocument()
+    expect(await screen.findByText('Define the request, expected result, business owner, and deployment policy before selecting models or tools.')).toBeInTheDocument()
     expect(document.querySelector('[data-node="route"]')).toHaveClass('active')
     fireEvent.click(screen.getByRole('button', { name: 'Ask next question →' }))
-    expect(await screen.findByText('What runs separately from the model?')).toBeInTheDocument()
+    expect(await screen.findByText('Which responsibilities should people, agents, and applications each own?')).toBeInTheDocument()
   })
 
   it('keeps the presenter pitch at seven scenes or fewer', () => {
@@ -93,7 +93,7 @@ describe('SceneRenderer', () => {
     const configured = scenes.find((item) => item.type === 'evidence-payoff')!
     const scene = { ...configured, adapterIds: ['proof-that-has-not-run'] }
     render(<SceneRenderer scene={scene} brand={demoConfig.brand} />)
-    expect(screen.getByText('Run the implemented blueprint slice to build the proof')).toBeInTheDocument()
+    expect(screen.getByText('Run the business process to build the proof')).toBeInTheDocument()
     expect(screen.getByText('not run')).toBeInTheDocument()
   })
 

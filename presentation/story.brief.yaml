@@ -1,11 +1,11 @@
 version: 1
 blueprint: ../demo-blueprint.yaml
 presentation:
-  title: "From agents to an open cloud-native blueprint"
-  audience: AI engineers, solution architects, and platform engineers
-  desired_decision: Understand how the QuickStart operationalizes a runnable subset of Red Hat's open Agentic AI solution blueprint on Intel Xeon CPU inference
+  title: "A repeatable blueprint for enterprise AI agents"
+  audience: Business leaders, architects, AI engineers, and platform teams
+  desired_decision: Use the Agentic AI blueprint to turn a business outcome into a governed agent process on Red Hat and Intel
   duration_minutes: 7
-  core_tension: An agent is a new workload class with lifecycle, isolation, identity, tools, inference, silicon, and authority beyond the model
+  core_tension: A useful AI response does not define the ownership, evidence, controls, infrastructure, or operating model required for a repeatable business process
   cta: Close the proof, then enter the lab to trace and extend one blueprint boundary
 
 source_material:

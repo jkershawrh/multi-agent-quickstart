@@ -59,7 +59,7 @@ export function SceneRenderer({ scene, brand }: { scene: SceneConfig; brand: { p
 
   if (scene.type === 'intro') {
     return (
-      <SceneFrame scene={scene}>
+      <SceneFrame scene={{ ...scene, title: undefined }}>
         <div className="brand-lockup brand-lockup-hero">
           <img src={brand.primary.logo} alt={brand.primary.alt} />
           <span>×</span>

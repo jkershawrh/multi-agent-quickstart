@@ -10,7 +10,7 @@ test('opening and architecture remain visually stable', async ({ page }) => {
 test('live journey opens as a workload workspace with topology on demand', async ({ page }) => {
   await page.goto('/?act=2&scene=0')
   await expect(page.getByText('Investigate INC-1042 and prepare—but do not execute—a remediation.')).toBeVisible()
-  await expect(page.getByRole('button', { name: 'Inspect the authority boundary' })).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Keep the decision with the accountable owner' })).toBeVisible()
   await expect(page).toHaveScreenshot('live-journey.png', { fullPage: true })
 })
 
