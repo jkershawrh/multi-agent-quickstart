@@ -57,6 +57,22 @@ paths:
               schema:
                 $ref: "#/components/schemas/AgentListResponse"
 
+  /api/v1/policy:
+    get:
+      operationId: getWorkflowPolicy
+      summary: Read the active workflow governance policy
+      description: >
+        Returns the deterministic policy boundary presented to participants.
+        This endpoint describes configured authority; it never grants approval
+        or executes an action.
+      responses:
+        "200":
+          description: Active workflow policy
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WorkflowPolicyResponse"
+
   /api/v1/workflow:
     post:
       operationId: runWorkflow
@@ -242,6 +258,26 @@ components:
         count:
           type: integer
           example: 3
+
+    WorkflowPolicyResponse:
+      type: object
+      required: [name, approval_tools, reviewer_profile, authority]
+      properties:
+        name:
+          type: string
+          example: "incident-response-governance"
+        approval_tools:
+          type: array
+          items:
+            type: string
+          example: []
+        reviewer_profile:
+          type: string
+          example: "human operator"
+        authority:
+          type: string
+          enum: [recommend_only]
+          example: "recommend_only"
 
     WorkflowRequest:
       type: object

@@ -97,3 +97,20 @@ class TestOpenAPIContractValidation:
             "agent_completed",
             "workflow_completed",
         ]
+
+    def test_orchestrator_declares_read_only_workflow_policy_contract(self):
+        spec = yaml.safe_load((CONTRACTS_DIR / "orchestrator.yaml").read_text())
+        operation = spec["paths"]["/api/v1/policy"]["get"]
+        response = operation["responses"]["200"]["content"]["application/json"]
+
+        assert response["schema"] == {
+            "$ref": "#/components/schemas/WorkflowPolicyResponse"
+        }
+        policy = spec["components"]["schemas"]["WorkflowPolicyResponse"]
+        assert policy["required"] == [
+            "name",
+            "approval_tools",
+            "reviewer_profile",
+            "authority",
+        ]
+        assert policy["properties"]["authority"]["enum"] == ["recommend_only"]

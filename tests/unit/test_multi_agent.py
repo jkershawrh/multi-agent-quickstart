@@ -202,6 +202,22 @@ class TestA2ATaskSend:
 
 class TestOrchestratorDiscoversAgents:
 
+    def test_policy_endpoint_reports_configured_human_authority_without_action(
+        self, monkeypatch
+    ):
+        monkeypatch.setattr(orchestrator, "WORKFLOW_POLICY_NAME", "certified-baseline")
+        monkeypatch.setattr(orchestrator, "WORKFLOW_APPROVAL_TOOLS", ("create_task",))
+        monkeypatch.setattr(orchestrator, "WORKFLOW_REVIEWER_PROFILE", "incident-commander")
+
+        body = _run(orchestrator.workflow_policy())
+
+        assert body == {
+            "name": "certified-baseline",
+            "approval_tools": ["create_task"],
+            "reviewer_profile": "incident-commander",
+            "authority": "recommend_only",
+        }
+
     def test_readiness_requires_all_configured_agents(self, monkeypatch):
         """Readiness stays closed until every configured agent is registered."""
         monkeypatch.setattr(

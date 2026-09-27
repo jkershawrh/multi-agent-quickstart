@@ -88,6 +88,21 @@ MODEL_NAME = os.environ.get("MODEL_NAME", "qwen2.5:1.5b")
 MODEL_SIMPLE = os.environ.get("MODEL_SIMPLE", "qwen2.5:0.5b")
 MODEL_COMPLEX = os.environ.get("MODEL_COMPLEX", "qwen2.5:1.5b")
 
+# Participant-visible governance metadata. This is deliberately descriptive:
+# the endpoint below cannot approve or execute an action, and the authority
+# remains with the named human reviewer.
+WORKFLOW_POLICY_NAME = os.environ.get(
+    "WORKFLOW_POLICY_NAME", "incident-response-governance"
+)
+WORKFLOW_APPROVAL_TOOLS = tuple(
+    item.strip()
+    for item in os.environ.get("WORKFLOW_APPROVAL_TOOLS", "").split(",")
+    if item.strip()
+)
+WORKFLOW_REVIEWER_PROFILE = os.environ.get(
+    "WORKFLOW_REVIEWER_PROFILE", "human operator"
+)
+
 # Per-agent request timeout. Must exceed the agent's own LLM timeout
 # (AGENT_LLM_TIMEOUT, default 60s) so slow CPU generations are not cut
 # off mid-flight and reported as errors. Configurable for larger models.
@@ -727,6 +742,17 @@ async def list_agents():
     return {
         "agents": [a.model_dump() for a in agents],
         "count": len(agents),
+    }
+
+
+@app.get("/api/v1/policy")
+async def workflow_policy():
+    """Describe the deterministic policy and human authority boundary."""
+    return {
+        "name": WORKFLOW_POLICY_NAME,
+        "approval_tools": list(WORKFLOW_APPROVAL_TOOLS),
+        "reviewer_profile": WORKFLOW_REVIEWER_PROFILE,
+        "authority": "recommend_only",
     }
 
 
