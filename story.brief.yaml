@@ -1,0 +1,98 @@
+version: 1
+blueprint: demo-blueprint.yaml
+presentation:
+  title: A repeatable blueprint for enterprise AI agents
+  audience: Business leaders, architects, AI engineers, and platform teams
+  desired_decision: Use Red Hat's Agentic AI blueprint as a shared method for turning a business outcome into a governed agent process running on an Intel Xeon CPU inference foundation.
+  duration_minutes: 7
+  core_tension: An AI pilot can produce a useful answer without defining the ownership, evidence, controls, infrastructure, or operating model required for a repeatable business process.
+  cta: Close the proof, then enter the lab to trace and extend one blueprint boundary.
+
+source_material:
+  mode: repository
+  items:
+    - https://developers.redhat.com/articles/2026/07/20/architect-open-blueprint-cloud-native-ai-agents
+    - demo-blueprint.yaml
+    - README.md
+    - docs/track-architecture-and-event-flows.md
+    - contracts/openapi/orchestrator.yaml
+    - contracts/openapi/mcp.yaml
+  consequential_assumptions: []
+
+architecture:
+  actors: [participant, incident-commander]
+  boundaries: [namespace, a2a-auth, tool-authority, model-boundary]
+  critical_flows: [agent-discovery, routed-workflow, bounded-agent-execution, governed-remediation, proof-export]
+  omitted_from_main_story:
+    - Track 3 target integrations that are not end-to-end validated
+    - Installation mechanics that belong in the hands-on lab
+
+beats:
+  - beat: ordinary-world
+    claim: Organizations need a repeatable way to turn an AI idea into a business process they can own, operate, and improve.
+  - beat: stakes
+    claim: A useful AI response is not enough when ownership, approved evidence, action authority, and measurable outcomes remain unclear.
+  - beat: root-cause
+    claim: More agents do not create governance; protocols and policy must expose each handoff.
+  - beat: reframe
+    claim: Treat the agent as a defined business process implemented through reusable roles, information boundaries, controls, and platform services.
+  - beat: system-reveal
+    claim: Five decisions—define, organize, govern, run, and improve—connect the business outcome to Red Hat and Intel implementation architecture.
+  - beat: live-proof
+    claim: A live request reveals its route, Intel Xeon-hosted model tier, participating agents, tool evidence, latency, and policy state.
+  - beat: trials
+    claim: Enabling the incident policy changes the same workflow from automatic completion to a pending human decision.
+  - beat: transformation
+    claim: The QuickStart makes one blueprint slice runnable without pretending every target integration is already deployed.
+  - beat: next-journey
+    claim: The lab begins only after the presentation closes and lets the learner customize roles, tools, and policy.
+
+evidence:
+  - id: live-agent-registry
+    claim: Three advertised A2A roles are discovered by the orchestrator.
+    classification: live-measurement
+    source: GET /api/v1/agents
+    owner: Orchestrator
+    last_verified: null
+    treatment: Show names and skills only from the current response.
+  - id: live-workflow
+    claim: The request returns classification, ordered agent steps, model selection, policy state, and measured latency.
+    classification: live-measurement
+    source: POST /api/v1/workflow
+    owner: Orchestrator
+    last_verified: null
+    treatment: Preserve every step and label simulated local output as rehearsal or demo.
+  - id: live-approval
+    claim: create_task pauses under policy until the incident commander approves or denies it.
+    classification: live-measurement
+    source: Approval API and workflow response
+    owner: Incident commander
+    last_verified: null
+    treatment: Show policy checksum, pending state, human decision, and final disposition.
+  - id: live-proof-pack
+    claim: The current run exports sanitized routing, agent, guardrail, policy, and approval evidence.
+    classification: live-measurement
+    source: GET /api/v1/proof-pack/{workflow_id}
+    owner: Orchestrator
+    last_verified: null
+    treatment: List contents from the current artifact rather than an authored inventory.
+
+live_systems:
+  - id: orchestrator
+    health: /health
+    readiness: /ready
+    proof: /api/v1/workflow
+  - id: approvals
+    proof: /api/v1/approvals
+  - id: proof-pack
+    proof: /api/v1/proof-pack/{workflow_id}
+
+journey:
+  presentation: 7-minute story ending with a current-session authority proof and explicit close
+  live_demonstration: Run the same incident with baseline and governed policy, then approve or deny
+  guided_demo: Trace A2A, model, MCP, guardrail, policy, and human-authority boundaries
+  hands_on_lab: Customize one role, tool allow-list, reviewer policy, failure case, and proof artifact
+
+open_questions:
+  - Which deployed environment and endpoint should power the presentation's live adapters?
+  - Should the primary changed condition demonstrate approve versus deny, or baseline versus governed policy?
