@@ -1,5 +1,9 @@
 FROM registry.access.redhat.com/ubi9/nodejs-22 AS build
 WORKDIR /opt/app-root/src
+ARG VITE_API_BASE=""
+ARG VITE_LAB_URL=""
+ENV VITE_API_BASE=${VITE_API_BASE}
+ENV VITE_LAB_URL=${VITE_LAB_URL}
 COPY --chown=1001:0 package*.json ./
 RUN npm ci
 COPY --chown=1001:0 . .
