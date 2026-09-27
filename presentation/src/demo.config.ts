@@ -1,5 +1,7 @@
 import type { DemoConfig } from './types'
 
+const launchpadLabUrl = import.meta.env.VITE_LAB_URL?.trim() || undefined
+
 const technicalTopology = {
   boundary: { label: 'OpenShift agent workload', detail: 'implemented slice of the Red Hat agentic AI blueprint' },
   entry: { id: 'operator', kind: 'human', label: 'Participant + GitOps', detail: 'declares intent; platform deploys the workload', endpoint: 'browser / Helm' },
@@ -20,7 +22,7 @@ const technicalTopology = {
 }
 
 export const demoConfig: DemoConfig = {
-  id: 'multi-agent-story', title: 'A repeatable blueprint for enterprise AI agents', subtitle: 'From business outcome to governed implementation', event: 'Build Multi-Agent AI Systems', audience: 'Business leaders, architects, AI engineers, and platform teams', cta: 'Define the outcome, build the agent process, and prove it can be governed.',
+  id: 'multi-agent-story', title: 'A repeatable blueprint for enterprise AI agents', subtitle: 'From business outcome to governed implementation', event: 'Build Multi-Agent AI Systems', audience: 'Business leaders, architects, AI engineers, and platform teams', cta: 'The blueprint is proven. Now operate the same process in Launchpad.',
   brand: { primary: { name: 'Red Hat', logo: '/logos/redhat.svg', alt: 'Red Hat' }, partner: { name: 'Intel', logo: '/logos/intel.png', alt: 'Intel' }, attribution: 'Red Hat × Intel' },
   acts: [
     { id: 'stakes', label: '00', title: 'The Risk', scenes: [
@@ -63,10 +65,10 @@ export const demoConfig: DemoConfig = {
       ], speakerPrompt: 'Show how one blueprint aligns three teams. Mention protocols only as implementation choices beneath the shared process.' },
     ] },
     { id: 'payoff', label: '04', title: 'Close', scenes: [
-      { id: 'payoff', type: 'evidence-payoff', beat: 'transformation', eyebrow: 'What the blueprint enables', title: 'Build an agent process the organization can own', adapterIds: ['agent-registry', 'workflow-lightweight', 'workflow-comprehensive', 'workflow-policy'], fallbackLine: 'Run the business process to build the proof', evidenceFields: [{ key: 'policy', label: 'Operating policy' }, { key: 'approvalTool', label: 'Controlled action' }, { key: 'reviewer', label: 'Accountable owner' }, { key: 'authority', label: 'AI authority' }], line1: 'Red Hat turns agent development into an operable, governed process.', line2: 'Intel Xeon provides the CPU inference foundation that runs the AI work inside it.', cta: 'Close the presentation. The hands-on lab applies the blueprint to the next process.', speakerPrompt: 'Close on organizational value: a repeatable way to design, implement, govern, and improve agent processes.' },
+      { id: 'payoff', type: 'evidence-payoff', beat: 'transformation', eyebrow: 'What the blueprint enables', title: 'Build an agent process the organization can own', adapterIds: ['agent-registry', 'workflow-lightweight', 'workflow-comprehensive', 'workflow-policy'], fallbackLine: 'Run the business process to build the proof', evidenceFields: [{ key: 'policy', label: 'Operating policy' }, { key: 'approvalTool', label: 'Controlled action' }, { key: 'reviewer', label: 'Accountable owner' }, { key: 'authority', label: 'AI authority' }], line1: 'Red Hat turns agent development into an operable, governed process.', line2: 'Intel Xeon provides the CPU inference foundation that runs the AI work inside it.', cta: 'Close the presentation. The Launchpad lab operates this same blueprint.', speakerPrompt: 'Close on organizational value, then make the depth change explicit: the presentation ends and the operator continues with the same architecture and evidence in Launchpad.' },
     ] },
   ],
   journeyHandoffs: [
-    { depth: 'lab', title: 'Apply the Agentic AI blueprint', duration: '60–90 minutes', question: 'Can the learner turn another business process into defined roles, evidence, AI work, policy, and accountable action?', technology: 'Red Hat OpenShift · Intel Xeon · A2A · MCP · semantic routing · human approval', instruction: 'After closing the presentation, open the Launchpad lab and use the same blueprint to customize one process.' },
+    { depth: 'lab', title: 'Operate the evidence-backed blueprint', duration: '60–90 minutes', question: 'Can the learner correlate, govern, recover, change, and restore the same multi-agent process?', technology: 'Red Hat OpenShift · Intel Xeon · A2A · MCP · deterministic policy · human approval', instruction: 'Close the presentation, then open Intel AI 401 in Launchpad to operate the same architecture and produce an operational proof package.', href: launchpadLabUrl },
   ],
 }
