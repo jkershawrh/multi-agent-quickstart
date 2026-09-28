@@ -17,7 +17,14 @@ from starlette.middleware.base import BaseHTTPMiddleware
 
 AGENT_AUTH_TOKEN = os.environ.get("AGENT_AUTH_TOKEN", "")
 
-OPEN_PATHS = {"/health", "/.well-known/agent-card.json", "/docs", "/openapi.json", "/mcp"}
+OPEN_PATHS = {
+    "/health",
+    "/ready",
+    "/.well-known/agent-card.json",
+    "/docs",
+    "/openapi.json",
+    "/mcp",
+}
 
 
 class TokenAuthMiddleware(BaseHTTPMiddleware):
