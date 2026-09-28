@@ -8,6 +8,8 @@ Each agent instance is configured via environment variables:
 Demo mode: all agents return simulated responses without LLM backends.
 """
 
+import hashlib
+import json
 import logging
 import os
 import random
@@ -229,10 +231,11 @@ def _demo_response(text: str) -> str:
 
 async def _llm_response(
     text: str, model_name: str = "", endpoint: str = ""
-) -> str:
-    """Call the LLM via the OpenAI-compatible endpoint and return its reply."""
+) -> tuple[str, dict]:
+    """Call the LLM and return its reply with measured response metadata."""
     use_model = model_name or MODEL_NAME
     use_endpoint = endpoint or MODEL_ENDPOINT
+    started = time.monotonic()
     try:
         async with httpx.AsyncClient(timeout=AGENT_LLM_TIMEOUT) as client:
             resp = await client.post(
@@ -255,10 +258,32 @@ async def _llm_response(
             )
             resp.raise_for_status()
             data = resp.json()
-            return data["choices"][0]["message"]["content"]
+            usage = data.get("usage") or {}
+            return data["choices"][0]["message"]["content"], {
+                "source_state": "live",
+                "telemetry_status": (
+                    "complete"
+                    if usage.get("prompt_tokens") is not None
+                    and usage.get("completion_tokens") is not None
+                    else "partial"
+                ),
+                "model_name": data.get("model") or use_model,
+                "endpoint_identity": use_endpoint,
+                "latency_ms": round((time.monotonic() - started) * 1000, 2),
+                "input_tokens": usage.get("prompt_tokens"),
+                "output_tokens": usage.get("completion_tokens"),
+            }
     except Exception as exc:
         logger.warning("LLM call failed (%s), falling back to demo response", exc)
-        return _demo_response(text)
+        return _demo_response(text), {
+            "source_state": "rehearsal",
+            "telemetry_status": "unavailable",
+            "model_name": use_model,
+            "endpoint_identity": use_endpoint or None,
+            "latency_ms": None,
+            "input_tokens": None,
+            "output_tokens": None,
+        }
 
 
 # ---------------------------------------------------------------------------
@@ -312,10 +337,10 @@ TOOL_KEYWORDS = {
 }
 
 
-async def _call_mcp_tools(text: str) -> str:
+async def _call_mcp_tools(text: str) -> tuple[str, list[dict]]:
     """Call relevant MCP tools based on query content and return results."""
     if not MCP_SERVER_URL:
-        return ""
+        return "", []
 
     text_lower = text.lower()
     tools_to_call = []
@@ -324,9 +349,10 @@ async def _call_mcp_tools(text: str) -> str:
             tools_to_call.append(tool_name)
 
     if not tools_to_call:
-        return ""
+        return "", []
 
     results = []
+    evidence = []
     try:
         async with httpx.AsyncClient(timeout=10.0) as client:
             for tool_name in tools_to_call:
@@ -347,11 +373,23 @@ async def _call_mcp_tools(text: str) -> str:
                     for item in content:
                         if item.get("text"):
                             results.append(f"[{tool_name}]: {item['text']}")
+                            evidence.append(
+                                {
+                                    "tool_name": tool_name,
+                                    "arguments_sha256": hashlib.sha256(
+                                        json.dumps(
+                                            arguments, sort_keys=True, separators=(",", ":")
+                                        ).encode("utf-8")
+                                    ).hexdigest(),
+                                    "source": MCP_SERVER_URL,
+                                    "collection_status": "collected",
+                                }
+                            )
                             logger.info("MCP tool call: %s", tool_name)
     except Exception as e:
         logger.warning("MCP tool call failed: %s", e)
 
-    return "\n".join(results)
+    return "\n".join(results), evidence
 
 
 def _build_tool_arguments(tool_name: str, text: str) -> dict:
@@ -419,6 +457,16 @@ async def a2a_endpoint(request: models.JsonRpcRequest):
         text = parts[0].get("text", "") if parts else ""
 
         start = time.monotonic()
+        evidence_items: list[dict] = []
+        inference = {
+            "source_state": "rehearsal" if DEMO_MODE else "unavailable",
+            "telemetry_status": "unavailable",
+            "model_name": model_override or MODEL_NAME,
+            "endpoint_identity": endpoint_override or MODEL_ENDPOINT or None,
+            "latency_ms": None,
+            "input_tokens": None,
+            "output_tokens": None,
+        }
 
         input_screen = await _screen_text(text, "input")
         if not input_screen["allowed"]:
@@ -429,11 +477,11 @@ async def a2a_endpoint(request: models.JsonRpcRequest):
                 "Please rephrase your query."
             )
         else:
-            tool_context = await _call_mcp_tools(text)
+            tool_context, evidence_items = await _call_mcp_tools(text)
             enriched_text = f"{text}\n\nTool results:\n{tool_context}" if tool_context else text
 
             if (endpoint_override or MODEL_ENDPOINT) and not DEMO_MODE:
-                response_text = await _llm_response(
+                response_text, inference = await _llm_response(
                     enriched_text, model_override, endpoint_override
                 )
             else:
@@ -480,6 +528,10 @@ async def a2a_endpoint(request: models.JsonRpcRequest):
                         parts=[models.Part(text=response_text)]
                     )
                 ],
+                metadata={
+                    "evidence": evidence_items,
+                    "inference": inference,
+                },
             ),
         )
 

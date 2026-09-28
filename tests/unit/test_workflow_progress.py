@@ -126,12 +126,61 @@ def test_caller_correlation_is_preserved_without_replacing_server_run_id():
     assert response.run_id != response.journey_id
 
 
-def test_unconfigured_source_state_fails_closed(monkeypatch):
-    monkeypatch.setattr(orchestrator, "WORKFLOW_SOURCE_STATE", "unavailable")
+def test_unconfigured_source_state_fails_closed():
     response = models.WorkflowResponse(**_collect_events()[-1]["response"])
 
     assert response.proof is not None
     assert response.proof.inference.source_state == "unavailable"
+
+
+def test_measured_agent_metadata_is_aggregated_without_guessing():
+    class MeasuredA2AClient(FakeA2AClient):
+        async def send_task(self, agent_name, text, model_override="", endpoint_override=""):
+            response = await super().send_task(
+                agent_name, text, model_override, endpoint_override
+            )
+            response["result"]["metadata"] = {
+                "evidence": [
+                    {
+                        "tool_name": "lookup_record",
+                        "arguments_sha256": "a" * 64,
+                        "source": "http://mcp:8004",
+                        "collection_status": "collected",
+                    }
+                ],
+                "inference": {
+                    "source_state": "live",
+                    "telemetry_status": "complete",
+                    "model_name": "granite-3.2-8b-tools",
+                    "endpoint_identity": "https://maas.example.test",
+                    "latency_ms": 100.0,
+                    "input_tokens": 20,
+                    "output_tokens": 10,
+                },
+            }
+            return response
+
+    async def collect() -> list[dict]:
+        events = []
+        async for event in orchestrator.workflow_events(
+            MeasuredA2AClient(),
+            "Investigate and resolve",
+            "comprehensive",
+            router=InactiveRouter(),
+        ):
+            events.append(event)
+        return events
+
+    response = models.WorkflowResponse(**asyncio.run(collect())[-1]["response"])
+
+    assert response.proof is not None
+    assert response.proof.evidence.status == "incomplete"
+    assert len(response.proof.evidence.items) == 3
+    assert response.proof.inference.source_state == "live"
+    assert response.proof.inference.telemetry_status == "complete"
+    assert response.proof.inference.latency_ms == 300.0
+    assert response.proof.inference.input_tokens == 60
+    assert response.proof.inference.output_tokens == 30
 
 
 def test_stream_route_emits_ndjson_before_returning_the_compatible_response(monkeypatch):

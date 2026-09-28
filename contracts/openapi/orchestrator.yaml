@@ -327,6 +327,13 @@ components:
           format: date-time
         model:
           type: string
+        evidence_items:
+          type: array
+          items:
+            type: object
+        inference:
+          type: object
+          nullable: true
 
     ClassificationSignal:
       type: object

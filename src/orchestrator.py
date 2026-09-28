@@ -102,10 +102,6 @@ WORKFLOW_APPROVAL_TOOLS = tuple(
 WORKFLOW_REVIEWER_PROFILE = os.environ.get(
     "WORKFLOW_REVIEWER_PROFILE", "human operator"
 )
-WORKFLOW_SOURCE_STATE = os.environ.get("WORKFLOW_SOURCE_STATE", "unavailable").lower()
-if WORKFLOW_SOURCE_STATE not in {"live", "rehearsal", "offline", "unavailable"}:
-    WORKFLOW_SOURCE_STATE = "unavailable"
-
 # Per-agent request timeout. Must exceed the agent's own LLM timeout
 # (AGENT_LLM_TIMEOUT, default 60s) so slow CPU generations are not cut
 # off mid-flight and reported as errors. Configurable for larger models.
@@ -421,6 +417,47 @@ def _utc_now() -> str:
     return datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
 
 
+def _aggregate_inference(steps: List[models.WorkflowStep]) -> models.InferenceProof:
+    records = [step.inference for step in steps if step.inference]
+    if not records:
+        return models.InferenceProof(source_state="unavailable")
+    states = {record.get("source_state", "unavailable") for record in records}
+    if "unavailable" in states:
+        source_state = "unavailable"
+    elif "rehearsal" in states:
+        source_state = "rehearsal"
+    elif "offline" in states:
+        source_state = "offline"
+    else:
+        source_state = "live"
+    statuses = {record.get("telemetry_status", "unavailable") for record in records}
+    telemetry_status = (
+        "complete"
+        if statuses == {"complete"}
+        else "unavailable"
+        if statuses == {"unavailable"}
+        else "partial"
+    )
+    latencies = [record.get("latency_ms") for record in records]
+    input_tokens = [record.get("input_tokens") for record in records]
+    output_tokens = [record.get("output_tokens") for record in records]
+    return models.InferenceProof(
+        source_state=source_state,
+        telemetry_status=telemetry_status,
+        model_name=records[-1].get("model_name"),
+        endpoint_identity=records[-1].get("endpoint_identity"),
+        latency_ms=(sum(latencies) if all(value is not None for value in latencies) else None),
+        input_tokens=(
+            sum(input_tokens) if all(value is not None for value in input_tokens) else None
+        ),
+        output_tokens=(
+            sum(output_tokens)
+            if all(value is not None for value in output_tokens)
+            else None
+        ),
+    )
+
+
 async def workflow_events(
     a2a_client: A2AClient,
     query: str,
@@ -539,6 +576,9 @@ async def workflow_events(
                     _agent_span.end()
 
             result_text = _extract_result_text(result)
+            task_metadata = result.get("result", {}).get("metadata") or {}
+            evidence_items = task_metadata.get("evidence") or []
+            inference = task_metadata.get("inference")
             step_completed_at = _utc_now()
             step_status = "failed" if result_text.startswith("Error:") else "completed"
 
@@ -551,6 +591,8 @@ async def workflow_events(
                 started_at=step_started_at,
                 completed_at=step_completed_at,
                 model=model_override or MODEL_NAME,
+                evidence_items=evidence_items,
+                inference=inference,
             ))
             agents_involved.append(agent_name)
             yield {
@@ -585,13 +627,16 @@ async def workflow_events(
             case_id=case_id,
             selected_workflow=workflow_type,
             proof=models.WorkflowProof(
-                evidence=models.EvidenceProof(),
-                policy=models.PolicyProof(policy_id=WORKFLOW_POLICY_NAME),
-                inference=models.InferenceProof(
-                    source_state=WORKFLOW_SOURCE_STATE,
-                    model_name=model_override or MODEL_NAME,
-                    endpoint_identity=endpoint_override or MODEL_ENDPOINT or None,
+                evidence=models.EvidenceProof(
+                    status=(
+                        "incomplete"
+                        if any(step.evidence_items for step in steps)
+                        else "unavailable"
+                    ),
+                    items=[item for step in steps for item in step.evidence_items],
                 ),
+                policy=models.PolicyProof(policy_id=WORKFLOW_POLICY_NAME),
+                inference=_aggregate_inference(steps),
                 human_review=models.HumanReviewProof(
                     reviewer_profile=WORKFLOW_REVIEWER_PROFILE
                 ),

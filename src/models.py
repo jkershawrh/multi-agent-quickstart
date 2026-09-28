@@ -70,6 +70,7 @@ class Task(BaseModel):
     contextId: Optional[str] = None
     status: TaskStatus = TaskStatus()
     artifacts: Optional[List[Artifact]] = None
+    metadata: Optional[dict] = None
     kind: str = "task"
 
 
@@ -129,6 +130,8 @@ class WorkflowStep(BaseModel):
     started_at: Optional[str] = None
     completed_at: Optional[str] = None
     model: Optional[str] = None
+    evidence_items: List[dict] = []
+    inference: Optional[dict] = None
 
 
 class EvidenceProof(BaseModel):
