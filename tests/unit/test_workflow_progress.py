@@ -111,6 +111,8 @@ def test_caller_correlation_is_preserved_without_replacing_server_run_id():
             "comprehensive",
             router=InactiveRouter(),
             journey_id="501-run-0001",
+            investigation_id="investigation-0001",
+            request_id="request-0001",
             case_id="C01",
         ):
             events.append(event)
@@ -120,10 +122,47 @@ def test_caller_correlation_is_preserved_without_replacing_server_run_id():
     response = models.WorkflowResponse(**events[-1]["response"])
 
     assert events[0]["journey_id"] == "501-run-0001"
+    assert events[0]["investigation_id"] == "investigation-0001"
+    assert events[0]["request_id"] == "request-0001"
     assert events[0]["case_id"] == "C01"
     assert response.journey_id == "501-run-0001"
+    assert response.investigation_id == "investigation-0001"
+    assert response.request_id == "request-0001"
     assert response.case_id == "C01"
     assert response.run_id != response.journey_id
+
+
+def test_every_workflow_event_has_the_required_v1_correlation_envelope():
+    events = _collect_events()
+    required = {
+        "journey_id",
+        "investigation_id",
+        "request_id",
+        "event_id",
+        "occurred_at",
+        "component_id",
+    }
+
+    assert events
+    assert all(required <= event.keys() for event in events)
+    assert all(event["component_id"] == "multi-agent-orchestrator" for event in events)
+    assert len({event["journey_id"] for event in events}) == 1
+    assert len({event["investigation_id"] for event in events}) == 1
+    assert len({event["request_id"] for event in events}) == 1
+    assert len({event["event_id"] for event in events}) == len(events)
+    assert all(event["occurred_at"].endswith("Z") for event in events)
+
+
+def test_generated_correlation_is_returned_to_clients_when_not_supplied():
+    events = _collect_events()
+    response = models.WorkflowResponse(**events[-1]["response"])
+
+    assert response.journey_id == events[0]["journey_id"]
+    assert response.investigation_id == events[0]["investigation_id"]
+    assert response.request_id == events[0]["request_id"]
+    assert response.journey_id
+    assert response.investigation_id
+    assert response.request_id
 
 
 def test_unconfigured_source_state_fails_closed():

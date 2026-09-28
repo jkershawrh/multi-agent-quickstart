@@ -102,6 +102,7 @@ WORKFLOW_APPROVAL_TOOLS = tuple(
 WORKFLOW_REVIEWER_PROFILE = os.environ.get(
     "WORKFLOW_REVIEWER_PROFILE", "human operator"
 )
+COMPONENT_ID = "multi-agent-orchestrator"
 # Per-agent request timeout. Must exceed the agent's own LLM timeout
 # (AGENT_LLM_TIMEOUT, default 60s) so slow CPU generations are not cut
 # off mid-flight and reported as errors. Configurable for larger models.
@@ -386,11 +387,19 @@ async def execute_workflow(
     query: str,
     workflow_type: str = "auto",
     journey_id: Optional[str] = None,
+    investigation_id: Optional[str] = None,
+    request_id: Optional[str] = None,
     case_id: Optional[str] = None,
 ) -> models.WorkflowResponse:
     """Execute a multi-agent workflow by delegating tasks sequentially."""
     return await _execute_workflow_inner(
-        a2a_client, query, workflow_type, journey_id=journey_id, case_id=case_id
+        a2a_client,
+        query,
+        workflow_type,
+        journey_id=journey_id,
+        investigation_id=investigation_id,
+        request_id=request_id,
+        case_id=case_id,
     )
 
 
@@ -400,11 +409,19 @@ async def _execute_workflow_inner(
     workflow_type: str,
     *,
     journey_id: Optional[str] = None,
+    investigation_id: Optional[str] = None,
+    request_id: Optional[str] = None,
     case_id: Optional[str] = None,
 ) -> models.WorkflowResponse:
     completed_response = None
     async for event in workflow_events(
-        a2a_client, query, workflow_type, journey_id=journey_id, case_id=case_id
+        a2a_client,
+        query,
+        workflow_type,
+        journey_id=journey_id,
+        investigation_id=investigation_id,
+        request_id=request_id,
+        case_id=case_id,
     ):
         if event["event"] == "workflow_completed":
             completed_response = models.WorkflowResponse(**event["response"])
@@ -465,6 +482,8 @@ async def workflow_events(
     *,
     router: Optional[SemanticRouter] = None,
     journey_id: Optional[str] = None,
+    investigation_id: Optional[str] = None,
+    request_id: Optional[str] = None,
     case_id: Optional[str] = None,
 ) -> AsyncIterator[dict]:
     """Publish ordered progress events while preserving dependency chaining."""
@@ -474,16 +493,30 @@ async def workflow_events(
     requested_workflow = workflow_type
     active_router = router or semantic_router
     run_id = str(uuid.uuid4())
+    journey_id = journey_id or str(uuid.uuid4())
+    investigation_id = investigation_id or case_id or str(uuid.uuid4())
+    request_id = request_id or str(uuid.uuid4())
     workflow_started_at = _utc_now()
 
-    yield {
-        "event": "workflow_started",
-        "run_id": run_id,
-        "requested_workflow": requested_workflow,
-        "started_at": workflow_started_at,
-        "journey_id": journey_id,
-        "case_id": case_id,
-    }
+    def correlated_event(event: str, **payload) -> dict:
+        return {
+            "event": event,
+            "journey_id": journey_id,
+            "investigation_id": investigation_id,
+            "request_id": request_id,
+            "event_id": str(uuid.uuid4()),
+            "occurred_at": _utc_now(),
+            "component_id": COMPONENT_ID,
+            **payload,
+        }
+
+    yield correlated_event(
+        "workflow_started",
+        run_id=run_id,
+        requested_workflow=requested_workflow,
+        started_at=workflow_started_at,
+        case_id=case_id,
+    )
 
     _wf_span = tracer.start_span("workflow", attributes={"workflow.type_requested": workflow_type}) if tracer else None
     try:
@@ -522,15 +555,15 @@ async def workflow_events(
             workflow_type = "comprehensive"
 
         if requested_workflow == "auto":
-            yield {
-                "event": "classification_completed",
-                "run_id": run_id,
-                "resolved_workflow": workflow_type,
-                "classification": (
+            yield correlated_event(
+                "classification_completed",
+                run_id=run_id,
+                resolved_workflow=workflow_type,
+                classification=(
                     classification.model_dump(mode="json") if classification else None
                 ),
-                "completed_at": _utc_now(),
-            }
+                completed_at=_utc_now(),
+            )
 
         if _wf_span:
             _wf_span.set_attribute("workflow.type_resolved", workflow_type)
@@ -550,14 +583,14 @@ async def workflow_events(
             step_start = time.monotonic()
             step_started_at = _utc_now()
 
-            yield {
-                "event": "agent_started",
-                "run_id": run_id,
-                "sequence": sequence,
-                "agent": agent_name,
-                "action": action,
-                "started_at": step_started_at,
-            }
+            yield correlated_event(
+                "agent_started",
+                run_id=run_id,
+                sequence=sequence,
+                agent=agent_name,
+                action=action,
+                started_at=step_started_at,
+            )
 
             _agent_span = tracer.start_span("agent_call", attributes={
                 "agent.name": agent_name,
@@ -595,19 +628,19 @@ async def workflow_events(
                 inference=inference,
             ))
             agents_involved.append(agent_name)
-            yield {
-                "event": "agent_completed",
-                "run_id": run_id,
-                "sequence": sequence,
-                "agent": agent_name,
-                "action": action,
-                "result": result_text,
-                "status": step_status,
-                "latency_ms": step_latency,
-                "started_at": step_started_at,
-                "completed_at": step_completed_at,
-                "model": model_override or MODEL_NAME,
-            }
+            yield correlated_event(
+                "agent_completed",
+                run_id=run_id,
+                sequence=sequence,
+                agent=agent_name,
+                action=action,
+                result=result_text,
+                status=step_status,
+                latency_ms=step_latency,
+                started_at=step_started_at,
+                completed_at=step_completed_at,
+                model=model_override or MODEL_NAME,
+            )
             context = f"{context}\n\nPrevious step ({agent_name}/{action}): {result_text}"
 
         total_latency = round((time.monotonic() - total_start) * 1000, 2)
@@ -624,6 +657,8 @@ async def workflow_events(
             classification=classification,
             run_id=run_id,
             journey_id=journey_id,
+            investigation_id=investigation_id,
+            request_id=request_id,
             case_id=case_id,
             selected_workflow=workflow_type,
             proof=models.WorkflowProof(
@@ -645,14 +680,14 @@ async def workflow_events(
             completed_at=workflow_completed_at,
             ai_disclaimer=AI_DISCLAIMER,
         )
-        yield {
-            "event": "workflow_completed",
-            "run_id": run_id,
-            "resolved_workflow": workflow_type,
-            "total_latency_ms": total_latency,
-            "completed_at": workflow_completed_at,
-            "response": response.model_dump(mode="json"),
-        }
+        yield correlated_event(
+            "workflow_completed",
+            run_id=run_id,
+            resolved_workflow=workflow_type,
+            total_latency_ms=total_latency,
+            completed_at=workflow_completed_at,
+            response=response.model_dump(mode="json"),
+        )
     finally:
         if _wf_span:
             _wf_span.end()
@@ -840,6 +875,8 @@ async def run_workflow(request: models.WorkflowRequest):
         query=request.query,
         workflow_type=request.workflow_type,
         journey_id=request.journey_id,
+        investigation_id=request.investigation_id,
+        request_id=request.request_id,
         case_id=request.case_id,
     )
 
@@ -854,6 +891,8 @@ async def stream_workflow(request: models.WorkflowRequest):
             query=request.query,
             workflow_type=request.workflow_type,
             journey_id=request.journey_id,
+            investigation_id=request.investigation_id,
+            request_id=request.request_id,
             case_id=request.case_id,
         ):
             yield json.dumps(event, separators=(",", ":")) + "\n"

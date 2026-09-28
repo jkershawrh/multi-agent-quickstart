@@ -294,6 +294,12 @@ components:
         journey_id:
           type: string
           description: Caller-supplied correlation identity for the learner journey.
+        investigation_id:
+          type: string
+          description: Caller-supplied identity for the investigation containing this request.
+        request_id:
+          type: string
+          description: Caller-supplied identity for this workflow request.
         case_id:
           type: string
           description: Immutable evaluation-case identity when running a governed evaluation.
@@ -397,6 +403,12 @@ components:
         journey_id:
           type: string
           nullable: true
+        investigation_id:
+          type: string
+          nullable: true
+        request_id:
+          type: string
+          nullable: true
         case_id:
           type: string
           nullable: true
@@ -488,7 +500,15 @@ components:
 
     WorkflowProgressEvent:
       type: object
-      required: [event, run_id]
+      required:
+        - event
+        - run_id
+        - journey_id
+        - investigation_id
+        - request_id
+        - event_id
+        - occurred_at
+        - component_id
       properties:
         event:
           type: string
@@ -501,6 +521,21 @@ components:
         run_id:
           type: string
           format: uuid
+        journey_id:
+          type: string
+        investigation_id:
+          type: string
+        request_id:
+          type: string
+        event_id:
+          type: string
+          format: uuid
+        occurred_at:
+          type: string
+          format: date-time
+        component_id:
+          type: string
+          enum: [multi-agent-orchestrator]
         sequence:
           type: integer
           minimum: 1

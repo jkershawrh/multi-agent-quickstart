@@ -118,6 +118,8 @@ class WorkflowRequest(BaseModel):
     query: str
     workflow_type: str = "auto"
     journey_id: Optional[str] = None
+    investigation_id: Optional[str] = None
+    request_id: Optional[str] = None
     case_id: Optional[str] = None
 
 
@@ -178,6 +180,8 @@ class WorkflowResponse(BaseModel):
     classification: Optional[ClassificationResult] = None
     run_id: str = Field(default_factory=lambda: str(uuid.uuid4()))
     journey_id: Optional[str] = None
+    investigation_id: Optional[str] = None
+    request_id: Optional[str] = None
     case_id: Optional[str] = None
     selected_workflow: Optional[str] = None
     proof: Optional[WorkflowProof] = None
