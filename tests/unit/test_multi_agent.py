@@ -650,6 +650,85 @@ class TestSemanticRouting:
         finally:
             orchestrator.MODEL_ENDPOINT = original
 
+    def test_semantic_router_sends_model_bearer_token(self, monkeypatch):
+        """The LLM fallback authenticates with the seat-scoped model key."""
+        captured = {}
+
+        class FakeResponse:
+            def raise_for_status(self):
+                return None
+
+            def json(self):
+                return {"choices": [{"message": {"content": "SIMPLE"}}]}
+
+        class FakeClient:
+            def __init__(self, **kwargs):
+                pass
+
+            async def __aenter__(self):
+                return self
+
+            async def __aexit__(self, *args):
+                return None
+
+            async def post(self, url, **kwargs):
+                captured.update(kwargs)
+                return FakeResponse()
+
+        monkeypatch.setattr(orchestrator.httpx, "AsyncClient", FakeClient)
+        monkeypatch.setattr(orchestrator, "MODEL_ENDPOINT", "https://models.example/v1")
+        monkeypatch.setattr(orchestrator, "MODEL_ENDPOINT_SIMPLE", "")
+        monkeypatch.setattr(orchestrator, "MODEL_API_KEY", "seat-model-key")
+
+        router = orchestrator.SemanticRouter("")
+        _run(router.connect())
+        result = _run(router.classify("classify this request"))
+
+        assert captured["headers"] == {"Authorization": "Bearer seat-model-key"}
+        assert result.classifier_id == "llm-fallback"
+
+
+class TestModelAuthentication:
+
+    def test_agent_sends_model_bearer_token(self, monkeypatch):
+        """Agent generations authenticate with the seat-scoped model key."""
+        captured = {}
+
+        class FakeResponse:
+            def raise_for_status(self):
+                return None
+
+            def json(self):
+                return {"choices": [{"message": {"content": "model response"}}]}
+
+        class FakeClient:
+            def __init__(self, **kwargs):
+                pass
+
+            async def __aenter__(self):
+                return self
+
+            async def __aexit__(self, *args):
+                return None
+
+            async def post(self, url, **kwargs):
+                captured.update(kwargs)
+                return FakeResponse()
+
+        monkeypatch.setattr(agent.httpx, "AsyncClient", FakeClient)
+        monkeypatch.setattr(agent, "MODEL_API_KEY", "seat-model-key")
+
+        response, _metadata = _run(
+            agent._llm_response(
+                "answer this request",
+                model_name="granite",
+                endpoint="https://models.example/v1",
+            )
+        )
+
+        assert captured["headers"] == {"Authorization": "Bearer seat-model-key"}
+        assert response == "model response"
+
 
 # ---------------------------------------------------------------------------
 # Test: MCP tool server

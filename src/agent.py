@@ -33,6 +33,7 @@ AGENT_SKILLS_RAW = os.environ.get("AGENT_SKILLS", "respond")
 
 MODEL_ENDPOINT = os.environ.get("MODEL_ENDPOINT", "")
 MODEL_NAME = os.environ.get("MODEL_NAME", "qwen2.5:1.5b")
+MODEL_API_KEY = os.environ.get("MODEL_API_KEY", "")
 DEMO_MODE = os.environ.get("DEMO_MODE", "").lower() in ("true", "1", "yes")
 MCP_SERVER_URL = os.environ.get("MCP_SERVER_URL", "")
 GUARDRAILS_URL = os.environ.get("GUARDRAILS_URL", "")
@@ -240,6 +241,9 @@ async def _llm_response(
         async with httpx.AsyncClient(timeout=AGENT_LLM_TIMEOUT) as client:
             resp = await client.post(
                 f"{use_endpoint}/chat/completions",
+                headers={"Authorization": f"Bearer {MODEL_API_KEY}"}
+                if MODEL_API_KEY
+                else {},
                 json={
                     "model": use_model,
                     "messages": [

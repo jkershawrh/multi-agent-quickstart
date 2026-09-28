@@ -87,6 +87,7 @@ MODEL_ENDPOINT_COMPLEX = os.environ.get("MODEL_ENDPOINT_COMPLEX", MODEL_ENDPOINT
 MODEL_NAME = os.environ.get("MODEL_NAME", "qwen2.5:1.5b")
 MODEL_SIMPLE = os.environ.get("MODEL_SIMPLE", "qwen2.5:0.5b")
 MODEL_COMPLEX = os.environ.get("MODEL_COMPLEX", "qwen2.5:1.5b")
+MODEL_API_KEY = os.environ.get("MODEL_API_KEY", "")
 
 # Participant-visible governance metadata. This is deliberately descriptive:
 # the endpoint below cannot approve or execute an action, and the authority
@@ -320,6 +321,9 @@ class SemanticRouter:
             async with httpx.AsyncClient(timeout=15.0) as client:
                 resp = await client.post(
                     f"{classify_endpoint}/chat/completions",
+                    headers={"Authorization": f"Bearer {MODEL_API_KEY}"}
+                    if MODEL_API_KEY
+                    else {},
                     json={
                         "model": classify_model,
                         "messages": [
