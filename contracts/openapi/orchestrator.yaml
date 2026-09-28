@@ -291,6 +291,12 @@ components:
           enum: [auto, lightweight, standard, comprehensive, general]
           default: "auto"
           example: "auto"
+        journey_id:
+          type: string
+          description: Caller-supplied correlation identity for the learner journey.
+        case_id:
+          type: string
+          description: Immutable evaluation-case identity when running a governed evaluation.
 
     WorkflowStep:
       type: object
@@ -381,6 +387,17 @@ components:
         run_id:
           type: string
           format: uuid
+        journey_id:
+          type: string
+          nullable: true
+        case_id:
+          type: string
+          nullable: true
+        selected_workflow:
+          type: string
+          nullable: true
+        proof:
+          $ref: "#/components/schemas/WorkflowProof"
         started_at:
           type: string
           format: date-time
@@ -390,6 +407,77 @@ components:
         ai_disclaimer:
           type: string
           example: "Agent responses are AI-generated -- verify recommendations with qualified professionals."
+
+    WorkflowProof:
+      type: object
+      required: [schema_version, evidence, policy, inference, human_review]
+      properties:
+        schema_version:
+          type: string
+          enum: [agentic-journey-proof/v1]
+        evidence:
+          type: object
+          required: [status, items]
+          properties:
+            status:
+              type: string
+              enum: [complete, incomplete, unavailable]
+            items:
+              type: array
+              items:
+                type: object
+        policy:
+          type: object
+          required: [policy_id, evaluation_status, result, authority]
+          properties:
+            policy_id:
+              type: string
+            evaluation_status:
+              type: string
+              enum: [evaluated, not_evaluated, unavailable]
+            result:
+              type: string
+            authority:
+              type: string
+              enum: [recommend_only]
+        inference:
+          type: object
+          required: [source_state, telemetry_status]
+          properties:
+            source_state:
+              type: string
+              enum: [live, rehearsal, offline, unavailable]
+            telemetry_status:
+              type: string
+              enum: [complete, partial, unavailable]
+            model_name:
+              type: string
+              nullable: true
+            endpoint_identity:
+              type: string
+              nullable: true
+            latency_ms:
+              type: number
+              nullable: true
+            input_tokens:
+              type: integer
+              nullable: true
+            output_tokens:
+              type: integer
+              nullable: true
+        human_review:
+          type: object
+          required: [required, status, reviewer_profile, automatic_action_executed]
+          properties:
+            required:
+              type: boolean
+            status:
+              type: string
+              enum: [pending, completed, unavailable]
+            reviewer_profile:
+              type: string
+            automatic_action_executed:
+              type: boolean
 
     WorkflowProgressEvent:
       type: object

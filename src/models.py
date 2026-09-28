@@ -116,6 +116,8 @@ class ClassificationResult(BaseModel):
 class WorkflowRequest(BaseModel):
     query: str
     workflow_type: str = "auto"
+    journey_id: Optional[str] = None
+    case_id: Optional[str] = None
 
 
 class WorkflowStep(BaseModel):
@@ -129,12 +131,53 @@ class WorkflowStep(BaseModel):
     model: Optional[str] = None
 
 
+class EvidenceProof(BaseModel):
+    status: str = "unavailable"
+    items: List[dict] = []
+
+
+class PolicyProof(BaseModel):
+    policy_id: str
+    evaluation_status: str = "not_evaluated"
+    result: str = "unavailable"
+    authority: str = "recommend_only"
+
+
+class InferenceProof(BaseModel):
+    source_state: str
+    telemetry_status: str = "unavailable"
+    model_name: Optional[str] = None
+    endpoint_identity: Optional[str] = None
+    latency_ms: Optional[float] = None
+    input_tokens: Optional[int] = None
+    output_tokens: Optional[int] = None
+
+
+class HumanReviewProof(BaseModel):
+    required: bool = True
+    status: str = "pending"
+    reviewer_profile: str
+    automatic_action_executed: bool = False
+
+
+class WorkflowProof(BaseModel):
+    schema_version: str = "agentic-journey-proof/v1"
+    evidence: EvidenceProof
+    policy: PolicyProof
+    inference: InferenceProof
+    human_review: HumanReviewProof
+
+
 class WorkflowResponse(BaseModel):
     steps: List[WorkflowStep]
     total_latency_ms: float
     agents_involved: List[str]
     classification: Optional[ClassificationResult] = None
     run_id: str = Field(default_factory=lambda: str(uuid.uuid4()))
+    journey_id: Optional[str] = None
+    case_id: Optional[str] = None
+    selected_workflow: Optional[str] = None
+    proof: Optional[WorkflowProof] = None
     started_at: Optional[str] = None
     completed_at: Optional[str] = None
     ai_disclaimer: str = (

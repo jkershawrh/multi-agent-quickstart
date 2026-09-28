@@ -92,6 +92,46 @@ def test_workflow_completion_retains_the_existing_response_contract():
     assert response.total_latency_ms > 0
     assert response.run_id == events[0]["run_id"]
     assert response.started_at <= response.completed_at
+    assert response.selected_workflow == "comprehensive"
+    assert response.proof is not None
+    assert response.proof.evidence.status == "unavailable"
+    assert response.proof.policy.evaluation_status == "not_evaluated"
+    assert response.proof.inference.telemetry_status == "unavailable"
+    assert response.proof.inference.latency_ms is None
+    assert response.proof.human_review.required is True
+    assert response.proof.human_review.automatic_action_executed is False
+
+
+def test_caller_correlation_is_preserved_without_replacing_server_run_id():
+    async def collect() -> list[dict]:
+        events = []
+        async for event in orchestrator.workflow_events(
+            FakeA2AClient(),
+            "Investigate and resolve",
+            "comprehensive",
+            router=InactiveRouter(),
+            journey_id="501-run-0001",
+            case_id="C01",
+        ):
+            events.append(event)
+        return events
+
+    events = asyncio.run(collect())
+    response = models.WorkflowResponse(**events[-1]["response"])
+
+    assert events[0]["journey_id"] == "501-run-0001"
+    assert events[0]["case_id"] == "C01"
+    assert response.journey_id == "501-run-0001"
+    assert response.case_id == "C01"
+    assert response.run_id != response.journey_id
+
+
+def test_unconfigured_source_state_fails_closed(monkeypatch):
+    monkeypatch.setattr(orchestrator, "WORKFLOW_SOURCE_STATE", "unavailable")
+    response = models.WorkflowResponse(**_collect_events()[-1]["response"])
+
+    assert response.proof is not None
+    assert response.proof.inference.source_state == "unavailable"
 
 
 def test_stream_route_emits_ndjson_before_returning_the_compatible_response(monkeypatch):

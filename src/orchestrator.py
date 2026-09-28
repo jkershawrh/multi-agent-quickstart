@@ -102,6 +102,9 @@ WORKFLOW_APPROVAL_TOOLS = tuple(
 WORKFLOW_REVIEWER_PROFILE = os.environ.get(
     "WORKFLOW_REVIEWER_PROFILE", "human operator"
 )
+WORKFLOW_SOURCE_STATE = os.environ.get("WORKFLOW_SOURCE_STATE", "unavailable").lower()
+if WORKFLOW_SOURCE_STATE not in {"live", "rehearsal", "offline", "unavailable"}:
+    WORKFLOW_SOURCE_STATE = "unavailable"
 
 # Per-agent request timeout. Must exceed the agent's own LLM timeout
 # (AGENT_LLM_TIMEOUT, default 60s) so slow CPU generations are not cut
@@ -386,18 +389,27 @@ async def execute_workflow(
     a2a_client: A2AClient,
     query: str,
     workflow_type: str = "auto",
+    journey_id: Optional[str] = None,
+    case_id: Optional[str] = None,
 ) -> models.WorkflowResponse:
     """Execute a multi-agent workflow by delegating tasks sequentially."""
-    return await _execute_workflow_inner(a2a_client, query, workflow_type)
+    return await _execute_workflow_inner(
+        a2a_client, query, workflow_type, journey_id=journey_id, case_id=case_id
+    )
 
 
 async def _execute_workflow_inner(
     a2a_client: A2AClient,
     query: str,
     workflow_type: str,
+    *,
+    journey_id: Optional[str] = None,
+    case_id: Optional[str] = None,
 ) -> models.WorkflowResponse:
     completed_response = None
-    async for event in workflow_events(a2a_client, query, workflow_type):
+    async for event in workflow_events(
+        a2a_client, query, workflow_type, journey_id=journey_id, case_id=case_id
+    ):
         if event["event"] == "workflow_completed":
             completed_response = models.WorkflowResponse(**event["response"])
     if completed_response is None:
@@ -415,6 +427,8 @@ async def workflow_events(
     workflow_type: str,
     *,
     router: Optional[SemanticRouter] = None,
+    journey_id: Optional[str] = None,
+    case_id: Optional[str] = None,
 ) -> AsyncIterator[dict]:
     """Publish ordered progress events while preserving dependency chaining."""
     classification = None
@@ -430,6 +444,8 @@ async def workflow_events(
         "run_id": run_id,
         "requested_workflow": requested_workflow,
         "started_at": workflow_started_at,
+        "journey_id": journey_id,
+        "case_id": case_id,
     }
 
     _wf_span = tracer.start_span("workflow", attributes={"workflow.type_requested": workflow_type}) if tracer else None
@@ -565,6 +581,21 @@ async def workflow_events(
             agents_involved=list(dict.fromkeys(agents_involved)),
             classification=classification,
             run_id=run_id,
+            journey_id=journey_id,
+            case_id=case_id,
+            selected_workflow=workflow_type,
+            proof=models.WorkflowProof(
+                evidence=models.EvidenceProof(),
+                policy=models.PolicyProof(policy_id=WORKFLOW_POLICY_NAME),
+                inference=models.InferenceProof(
+                    source_state=WORKFLOW_SOURCE_STATE,
+                    model_name=model_override or MODEL_NAME,
+                    endpoint_identity=endpoint_override or MODEL_ENDPOINT or None,
+                ),
+                human_review=models.HumanReviewProof(
+                    reviewer_profile=WORKFLOW_REVIEWER_PROFILE
+                ),
+            ),
             started_at=workflow_started_at,
             completed_at=workflow_completed_at,
             ai_disclaimer=AI_DISCLAIMER,
@@ -763,6 +794,8 @@ async def run_workflow(request: models.WorkflowRequest):
         a2a_client,
         query=request.query,
         workflow_type=request.workflow_type,
+        journey_id=request.journey_id,
+        case_id=request.case_id,
     )
 
 
@@ -775,6 +808,8 @@ async def stream_workflow(request: models.WorkflowRequest):
             a2a_client,
             query=request.query,
             workflow_type=request.workflow_type,
+            journey_id=request.journey_id,
+            case_id=request.case_id,
         ):
             yield json.dumps(event, separators=(",", ":")) + "\n"
 
