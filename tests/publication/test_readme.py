@@ -131,6 +131,16 @@ class TestRequiredSections:
                 f"Non-descriptive alt text: '{alt}'"
             )
 
+    def test_launchpad_guided_experience_has_show_learn_do_prove(self, readme_text):
+        assert "## Launchpad guided experience" in readme_text
+        for stage in ("Show", "Learn", "Do", "Prove"):
+            assert f"**{stage}**" in readme_text
+        assert "three discovered agents" in readme_text
+        assert "correlation identifiers" in readme_text
+        assert "namespace-scoped" in readme_text
+        assert "zero learner-created residue" in readme_text
+        assert "human review" in readme_text
+
 
 class TestTags:
 

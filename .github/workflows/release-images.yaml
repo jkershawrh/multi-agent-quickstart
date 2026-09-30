@@ -108,7 +108,7 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
       - id: image
-        run: echo "name=${REGISTRY,,}/${GITHUB_REPOSITORY_OWNER,,}/operate-agentic-blueprint-presentation" >> "$GITHUB_OUTPUT"
+        run: echo "name=${REGISTRY,,}/${GITHUB_REPOSITORY_OWNER,,}/multi-agent-quickstart-presentation" >> "$GITHUB_OUTPUT"
       - id: meta
         uses: docker/metadata-action@v5
         with:

@@ -6,7 +6,7 @@ presentation:
   desired_decision: Use the Agentic AI blueprint to turn a business outcome into a governed agent process on Red Hat and Intel
   duration_minutes: 7
   core_tension: A useful AI response does not define the ownership, evidence, controls, infrastructure, or operating model required for a repeatable business process
-  cta: Close the proof, then enter the Launchpad 401 lab to operate the same blueprint
+  cta: Close the proof, then enter the Launchpad 301 lab to build and prove the same blueprint
 
 source_material:
   mode: repository
@@ -52,5 +52,5 @@ journey:
   presentation: 5–7 minute decision story with no more than seven scenes
   live_demonstration: 5–10 minute proof in the operator or system workspace
   guided_demo: 20–35 minute instructor-led architecture and evidence trace
-  hands_on_lab: 60–90 minutes to correlate the journey, inspect evidence and policy, prove safe denial and recovery, change one policy, restore baseline, and produce an operational proof package
+  hands_on_lab: 60–90 minutes to discover the agents, compare two workflow depths, inspect routing and MCP evidence, preserve human authority, and explain the resulting proof
 open_questions: []

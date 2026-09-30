@@ -110,7 +110,7 @@ def test_caller_correlation_is_preserved_without_replacing_server_run_id():
             "Investigate and resolve",
             "comprehensive",
             router=InactiveRouter(),
-            journey_id="501-run-0001",
+            journey_id="301-run-0001",
             investigation_id="investigation-0001",
             request_id="request-0001",
             case_id="C01",
@@ -121,11 +121,11 @@ def test_caller_correlation_is_preserved_without_replacing_server_run_id():
     events = asyncio.run(collect())
     response = models.WorkflowResponse(**events[-1]["response"])
 
-    assert events[0]["journey_id"] == "501-run-0001"
+    assert events[0]["journey_id"] == "301-run-0001"
     assert events[0]["investigation_id"] == "investigation-0001"
     assert events[0]["request_id"] == "request-0001"
     assert events[0]["case_id"] == "C01"
-    assert response.journey_id == "501-run-0001"
+    assert response.journey_id == "301-run-0001"
     assert response.investigation_id == "investigation-0001"
     assert response.request_id == "request-0001"
     assert response.case_id == "C01"
@@ -329,3 +329,84 @@ def test_completed_agents_are_explained_as_business_stages(monkeypatch):
     assert "ASSESSMENT AND LIKELY CAUSES" in completed[1]
     assert "PROPOSED GOVERNED ACTION" in completed[1]
     assert "HUMAN REVIEW REQUIRED" in completed[1]
+
+
+def test_ui_preserves_correlation_and_renders_the_workflow_proof(monkeypatch):
+    events = _collect_events()
+
+    class FakeStreamResponse:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args):
+            return False
+
+        def raise_for_status(self):
+            return None
+
+        def iter_lines(self):
+            return [json.dumps(event) for event in events]
+
+    monkeypatch.setattr(ui.httpx, "stream", lambda *args, **kwargs: FakeStreamResponse())
+    completed = list(
+        ui.run_workflow("Investigate and resolve", "comprehensive", [])
+    )[-1]
+
+    routing = completed[0]
+    history_entry = completed[5][0]
+    response = events[-1]["response"]
+
+    assert f"Run ID:           {response['run_id']}" in routing
+    assert f"Journey ID:       {response['journey_id']}" in routing
+    assert f"Investigation ID: {response['investigation_id']}" in routing
+    assert f"Request ID:       {response['request_id']}" in routing
+    assert "WORKFLOW PROOF" in routing
+    assert "Inference source:" in routing
+    assert "Evidence status:" in routing
+    assert "Human review:     required" in routing
+    assert history_entry["journey_id"] == response["journey_id"]
+    assert history_entry["investigation_id"] == response["investigation_id"]
+    assert history_entry["request_id"] == response["request_id"]
+
+
+def test_agent_registry_uses_the_seat_token_when_auth_is_enabled(monkeypatch):
+    captured = {}
+
+    class FakeResponse:
+        def raise_for_status(self):
+            return None
+
+        def json(self):
+            return {
+                "agents": [
+                    {
+                        "name": "research",
+                        "url": "http://research:8001",
+                        "status": "active",
+                        "skills": [{"name": "investigate"}],
+                    }
+                ]
+            }
+
+    def fake_get(url, **kwargs):
+        captured["url"] = url
+        captured["headers"] = kwargs.get("headers")
+        return FakeResponse()
+
+    monkeypatch.setattr(ui, "AGENT_AUTH_TOKEN", "seat-token")
+    monkeypatch.setattr(ui.httpx, "get", fake_get)
+
+    rendered = ui.fetch_agents()
+
+    assert captured["headers"] == {"Authorization": "Bearer seat-token"}
+    assert "RESEARCH" in rendered
+
+
+def test_workspace_names_the_readiness_check_and_result_boundaries():
+    config = json.dumps(ui.demo.config, default=str)
+
+    assert "Check readiness (expect 3 agents)" in config
+    assert "How to read the result" in config
+    assert "Routing decides the workflow depth" in config
+    assert "Agents create the response package" in config
+    assert "MCP contributes governed evidence" in config

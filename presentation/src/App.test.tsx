@@ -40,11 +40,11 @@ describe('presentation controls', () => {
     expect(screen.getByText(/business need/)).toBeInTheDocument()
   })
 
-  it('closes into the Launchpad 401 operating journey', () => {
+  it('closes into the Launchpad 301 build journey', () => {
     window.history.replaceState(null, '', '/?act=4&scene=0&finale=1')
     render(<App />)
-    expect(screen.getByText('Operate the evidence-backed blueprint')).toBeInTheDocument()
-    expect(screen.getByText(/Intel AI 401 in Launchpad/)).toBeInTheDocument()
+    expect(screen.getByText('Build the multi-agent blueprint')).toBeInTheDocument()
+    expect(screen.getByText(/Intel AI 301 in Launchpad/)).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Close presentation' })).toBeInTheDocument()
   })
 })

@@ -53,7 +53,7 @@ The model can classify, generate role-specific artifacts, and explain a proposed
 
 ### 7. Close before the lab
 
-The presentation ends after the evidence-based payoff. The hands-on next journey is Launchpad's `operate-agentic-blueprint` 401 lab, where the learner correlates the same workflow, inspects evidence and policy, proves safe denial and recovery, changes one bounded policy, restores baseline, and produces an operational proof package. The presentation image accepts `VITE_LAB_URL` at build time so the final handoff can link to the correct Launchpad environment without hard-coding a cluster URL.
+The presentation ends after the evidence-based payoff. The hands-on next journey is Launchpad's `multi-agent-quickstart` 301 lab, where the learner discovers the three agents, compares lightweight and comprehensive workflow depth, inspects routing and governed MCP evidence, and proves that human review remains the action boundary. The presentation image accepts `VITE_LAB_URL` at build time so the final handoff can link to the correct Launchpad environment without hard-coding a cluster URL.
 
 ## Non-claims
 

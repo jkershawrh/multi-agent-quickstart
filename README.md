@@ -49,6 +49,39 @@ Deploy cooperating AI agents with semantic routing, MCP tool calling, and inter-
 
 ## Overview
 
+## Launchpad guided experience
+
+The Launchpad catalog experience turns this source project into one guided,
+seat-specific incident-response lab. It is not three separate labs. The
+participant moves from a business story into the live workspace, inspects the
+same workload through the Terminal and OpenShift Console, and finishes with a
+proof and cleanup checkpoint.
+
+- **Show** — frame a fictional service incident and run a working request in
+  the Multi-Agent Workspace. The result must show the selected route, the
+  ordered agent stages, governed MCP evidence, the actual model reported by
+  inference telemetry, and the human review boundary.
+- **Learn** — explain why three discovered agents publish independent A2A
+  contracts, how semantic routing changes workflow depth, why MCP tools remain
+  outside the model, and where input and output guardrails run.
+- **Do** — compare lightweight and comprehensive runs, inspect the distinct
+  stage completion times, call one schema-defined MCP tool, prove a synthetic
+  prompt-injection request is denied, and apply then roll back one
+  namespace-scoped executor policy on OpenShift.
+- **Prove** — retain the run, journey, investigation, and request correlation identifiers;
+  verify the evidence and inference source states; confirm no
+  automatic action was taken; restore the certified policy baseline; and show
+  zero learner-created residue before Launchpad reclaims the seat and revokes
+  its model credential.
+
+The source runtime now exposes these boundaries directly in the participant
+workspace. A readiness check names the expected three agents, workflow events
+arrive in dependency order, each stage has its own measured time, the run
+history stays local to the participant browser session, and the proof summary
+distinguishes generated language from evidence, policy, and authority. The
+Showroom guide remains responsible for the prescribed exercise order and for
+making the final cleanup checks executable.
+
 ## Detailed description
 
 ### Who is this for?

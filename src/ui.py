@@ -45,6 +45,9 @@ def render_history(history: list[dict] | None) -> str:
             [
                 "=" * 72,
                 f"RUN {entry['run_id']}",
+                f"Journey:       {entry.get('journey_id', 'unavailable')}",
+                f"Investigation: {entry.get('investigation_id', 'unavailable')}",
+                f"Request:       {entry.get('request_id', 'unavailable')}",
                 f"Completed: {entry['completed_at']}",
                 f"Route:     {entry['workflow']}",
                 f"Duration:  {entry['total_latency_ms'] / 1000:.2f}s",
@@ -61,6 +64,32 @@ def render_history(history: list[dict] | None) -> str:
             ]
         )
     return "\n".join(sections)
+
+
+def _render_workflow_proof(response: dict) -> list[str]:
+    """Render participant-safe proof without exposing endpoints or credentials."""
+    proof = response.get("proof") or {}
+    evidence = proof.get("evidence") or {}
+    inference = proof.get("inference") or {}
+    human_review = proof.get("human_review") or {}
+    return [
+        "",
+        "RUN CORRELATION",
+        f"  Run ID:           {response.get('run_id', 'unavailable')}",
+        f"  Journey ID:       {response.get('journey_id', 'unavailable')}",
+        f"  Investigation ID: {response.get('investigation_id', 'unavailable')}",
+        f"  Request ID:       {response.get('request_id', 'unavailable')}",
+        "",
+        "WORKFLOW PROOF",
+        f"  Evidence status:  {evidence.get('status', 'unavailable')}",
+        f"  Inference source: {inference.get('source_state', 'unavailable')}",
+        f"  Inference model:  {inference.get('model_name') or 'unavailable'}",
+        f"  Telemetry status: {inference.get('telemetry_status', 'unavailable')}",
+        "  Human review:     "
+        + ("required" if human_review.get("required", True) else "not required"),
+        "  Automatic action: "
+        + ("executed" if human_review.get("automatic_action_executed") else "not executed"),
+    ]
 
 
 def _render_timeline(steps: list[dict], total_latency_ms: float | None = None) -> str:
@@ -229,6 +258,8 @@ def run_workflow(query: str, workflow_type: str, history: list[dict] | None):
                     yield outputs()
                 elif event_type == "workflow_completed":
                     total_latency_ms = event["total_latency_ms"]
+                    response = event.get("response") or {}
+                    route_lines.extend(_render_workflow_proof(response))
                     agent_lines.append(
                         "HUMAN REVIEW REQUIRED\n"
                         "This is an AI-generated response package. A qualified person must "
@@ -246,6 +277,9 @@ def run_workflow(query: str, workflow_type: str, history: list[dict] | None):
                         current_history,
                         {
                             "run_id": run_id,
+                            "journey_id": response.get("journey_id"),
+                            "investigation_id": response.get("investigation_id"),
+                            "request_id": response.get("request_id"),
                             "query": query,
                             "workflow": resolved_workflow,
                             "status": "completed",
@@ -268,7 +302,16 @@ def run_workflow(query: str, workflow_type: str, history: list[dict] | None):
 def fetch_agents() -> str:
     """GET the agent registry from the orchestrator."""
     try:
-        resp = httpx.get(f"{ORCHESTRATOR_URL}/api/v1/agents", timeout=10.0)
+        headers = (
+            {"Authorization": f"Bearer {AGENT_AUTH_TOKEN}"}
+            if AGENT_AUTH_TOKEN
+            else {}
+        )
+        resp = httpx.get(
+            f"{ORCHESTRATOR_URL}/api/v1/agents",
+            headers=headers,
+            timeout=10.0,
+        )
         resp.raise_for_status()
         agents = resp.json()
     except httpx.HTTPStatusError as exc:
@@ -432,6 +475,14 @@ with gr.Blocks(title="AI Operations Incident Workspace", theme=gr.themes.Soft())
             "Results appear as each dependent stage completes. Evidence informs the "
             "assessment; the proposed action still requires human review."
         )
+        gr.Markdown(
+            "### How to read the result\n"
+            "**Routing decides the workflow depth** and model tier. "
+            "**Agents create the response package** in dependency order. "
+            "**MCP contributes governed evidence** through schema-defined tools; it "
+            "does not replace the model or grant approval. The correlation and proof "
+            "fields under the routing explanation connect this run to later evidence."
+        )
 
         with gr.Row():
             agent_output = gr.Textbox(
@@ -502,9 +553,13 @@ with gr.Blocks(title="AI Operations Incident Workspace", theme=gr.themes.Soft())
             tools_output = gr.Textbox(label="Available tool contracts", lines=20)
             tools_btn.click(fn=fetch_tools, inputs=[], outputs=tools_output)
 
-        with gr.Accordion("Runtime health", open=False):
-            stats_btn = gr.Button("Refresh System Status")
-            stats_output = gr.Textbox(label="Technical system health", lines=15)
+        with gr.Accordion("Runtime readiness and discovered agents", open=False):
+            gr.Markdown(
+                "Use this check before a workflow. A ready guided seat reports three "
+                "agents—research, analyst, and executor—and a healthy MCP tool server."
+            )
+            stats_btn = gr.Button("Check readiness (expect 3 agents)")
+            stats_output = gr.Textbox(label="System readiness evidence", lines=15)
             stats_btn.click(fn=fetch_stats, inputs=[], outputs=stats_output)
 
     gr.Markdown(

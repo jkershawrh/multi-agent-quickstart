@@ -12,7 +12,8 @@ def test_release_pipeline_publishes_both_immutable_amd64_images():
     assert "publish-presentation:" in source
     assert "platforms: linux/amd64" in source
     assert "multi-agent-quickstart" in source
-    assert "operate-agentic-blueprint-presentation" in source
+    assert "multi-agent-quickstart-presentation" in source
+    assert "operate-agentic-blueprint-presentation" not in source
     assert "type=sha,format=long" in source
 
 
