@@ -31,14 +31,16 @@ describe('SceneRenderer', () => {
     expect(screen.getByRole('button', { name: /match effort to the request/i })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: /build an evidence-backed recommendation/i })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: /keep the decision with the accountable owner/i })).toBeInTheDocument()
+    expect(screen.getByText('WORKLOAD PROOF')).toBeInTheDocument()
+    expect(screen.queryByText('LIVE WORKLOAD')).not.toBeInTheDocument()
     expect(screen.queryByLabelText('Live technical deployment topology')).not.toBeInTheDocument()
     fireEvent.click(screen.getByRole('button', { name: 'Inspect technical topology' }))
     expect(screen.getByLabelText('Live technical deployment topology')).toBeInTheDocument()
     expect(screen.getByText('OpenShift agent workload')).toBeInTheDocument()
     expect(screen.getByText('POST /api/v1/workflow')).toBeInTheDocument()
-    fireEvent.click(screen.getByRole('button', { name: /start the live process/i }))
+    fireEvent.click(screen.getByRole('button', { name: /start the proof/i }))
     expect((await screen.findAllByText('Confirm available capabilities'))[0]).toBeInTheDocument()
-    expect(await screen.findByRole('button', { name: /next live act/i })).toBeInTheDocument()
+    expect(await screen.findByRole('button', { name: /next proof act/i })).toBeInTheDocument()
   })
 
   it('renders the statistic-grid scene', () => {

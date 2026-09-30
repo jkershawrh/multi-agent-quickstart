@@ -57,6 +57,9 @@ participant moves from a business story into the live workspace, inspects the
 same workload through the Terminal and OpenShift Console, and finishes with a
 proof and cleanup checkpoint.
 
+- **Story** — investigate a fictional service incident and prepare a bounded
+  remediation recommendation without granting the agents authority to execute
+  it. The accountable human remains the final decision maker.
 - **Show** — frame a fictional service incident and run a working request in
   the Multi-Agent Workspace. The result must show the selected route, the
   ordered agent stages, governed MCP evidence, the actual model reported by

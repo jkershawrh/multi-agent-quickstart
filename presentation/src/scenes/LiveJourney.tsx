@@ -35,7 +35,7 @@ export function LiveJourney({ scene }: { scene: LiveJourneyScene }) {
     </nav>
     <div className="live-workspace-main">
       <div className="journey-status">
-        <small>{step ? `ACT ${stepIndex + 1} OF ${scene.steps.length}` : 'LIVE WORKLOAD'}</small>
+        <small>{step ? `ACT ${stepIndex + 1} OF ${scene.steps.length}` : 'WORKLOAD PROOF'}</small>
         <strong>{step?.title ?? 'Start with the workload—not the topology'}</strong>
         <span>{step?.detail ?? 'Run a concrete input, then inspect the evidence and measurements returned by each condition.'}</span>
         {state.source && <span className={`source-badge source-${state.source}`}>{state.source}</span>}
@@ -56,7 +56,7 @@ export function LiveJourney({ scene }: { scene: LiveJourneyScene }) {
       <div className="journey-controls">
       {scene.technicalTopology && <button className="button button-secondary" onClick={() => setShowTopology((visible) => !visible)}>{showTopology ? 'Hide' : 'Inspect'} technical topology</button>}
       {stepIndex < 0 && <button className="button button-primary" onClick={() => runStep(0)}>{scene.cta}</button>}
-      {stepIndex >= 0 && !complete && state.status !== 'loading' && <button className="button button-primary" onClick={() => runStep(stepIndex + 1)}>Next live act →</button>}
+      {stepIndex >= 0 && !complete && state.status !== 'loading' && <button className="button button-primary" onClick={() => runStep(stepIndex + 1)}>Next proof act →</button>}
       {state.status === 'loading' && <button className="button button-primary" disabled>Running…</button>}
       {state.status === 'error' && <button className="button button-secondary" onClick={() => runStep(stepIndex)}>Retry</button>}
       {complete && <button className="button button-secondary" onClick={() => { setStepIndex(-1); setState({ status: 'idle' }); setShowTopology(false) }}>Replay</button>}
